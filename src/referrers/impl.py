@@ -40,6 +40,19 @@ class ReferrerGraphNode:
             " (circular ref)" if self.is_cycle else ""
         )
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, ReferrerGraphNode)
+            and self.name == other
+            and self.id == other.id
+        )
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.name, self.id))
+
 
 class ReferrerGraph(ABC):
     """
@@ -68,10 +81,13 @@ class ReferrerGraph(ABC):
 
 
 def get_referrer_graph(
-    target_objects: Iterable[Any], module_prefixes: Collection[str]
+    target_objects: Collection[Any], module_prefixes: Collection[str]
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target objects.
+
+    The `target_objects` collection is excluded from the referrer grap.
+
     :param target_objects: The objects to analyze.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
     :return: An ObjectGraph containing `ReferrerGraphNode`s.
@@ -388,14 +404,16 @@ class _ReferrerGraphBuilder:
     def build(self) -> ReferrerGraph:
         graph = nx.DiGraph()
 
-        stack: Deque[Tuple[ReferrerGraphNode, Any]] = collections.deque(
+        stack: Deque[Tuple[ReferrerGraphNode, Any, int]] = collections.deque(
             self._get_initial_target_node(target_object)
             for target_object in self._target_objects
         )
         seen_ids = {id(target_object) for target_object in self._target_objects}
 
+        # Do a depth-first search of the object graph, adding nodes and edges to the graph
+        # as we go.
         while stack:
-            target_graph_node, target_object = stack.pop()
+            target_graph_node, target_object, depth = stack.pop()
 
             # For each referrer of the target object, find the name(s) of the referrer and
             # add an edge to the graph for each
@@ -414,7 +432,7 @@ class _ReferrerGraphBuilder:
                     # relationship though.
                     if not seen:
                         seen_ids.add(referrer_id)
-                        stack.append((referrer_graph_node, referrer_object))
+                        stack.append((referrer_graph_node, referrer_object, depth + 1))
 
             # For each non-referrer name pointing to the target object, add an edge to the graph.
             non_referrer_nodes = self._get_non_referrer_nodes(target_object)
@@ -425,11 +443,12 @@ class _ReferrerGraphBuilder:
 
     def _get_initial_target_node(
         self, target_object: Any
-    ) -> Tuple[ReferrerGraphNode, Any]:
+    ) -> Tuple[ReferrerGraphNode, Any, int]:
         name = type(target_object).__name__
         return (
             ReferrerGraphNode(name=name, id=id(target_object), type="object"),
             target_object,
+            0,
         )
 
     def _get_referrer_nodes(
