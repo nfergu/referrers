@@ -17,7 +17,7 @@ from typing import (
     Set,
     Tuple,
     Deque,
-    TextIO,
+    TextIO, List,
 )
 
 import networkx as nx
@@ -79,19 +79,36 @@ class ReferrerGraph(ABC):
         """
         pass
 
+def get_referrer_graph(target_object: Any, module_prefixes: Collection[str]):
+    """
+    Gets a graph of referrers for the target object.
 
-def get_referrer_graph(
-    target_objects: Collection[Any], module_prefixes: Collection[str]
+    To analyze a list of objects, use `get_referrer_graph_for_list` instead.
+
+    :param target_object: The object to analyze.
+    :param module_prefixes: The prefixes of the modules to search for module-level variables.
+    :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
+        `target_object`.
+    """
+    return get_referrer_graph_for_list([target_object], module_prefixes)
+
+
+def get_referrer_graph_for_list(
+    target_objects: List[Any], module_prefixes: Collection[str]
 ) -> ReferrerGraph:
     """
-    Gets a graph of referrers for the target objects.
+    Gets a graph of referrers for the list of target objects. All objects in the
+    list are analyzed. To analyze a single object, use `get_referrer_graph`.
 
-    The `target_objects` collection is excluded from the referrer grap.
+    The `target_objects` list is excluded from the referrer grap.
 
-    :param target_objects: The objects to analyze.
+    :param target_objects: The objects to analyze. This must be a list.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
-    :return: An ObjectGraph containing `ReferrerGraphNode`s.
+    :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
+        the target objects.
     """
+    if not isinstance(target_objects, list):
+        raise ValueError("target_objects must be a list")
     builder = _ReferrerGraphBuilder(target_objects, module_prefixes)
     return builder.build()
 
@@ -327,9 +344,9 @@ class ObjectNameFinder(ReferrerNameFinder):
                 for index in matching_indices:
                     names.add(f"{type(parent_object).__name__}[{index}]")
         except Exception:
-            # This is a catch-all because some containers may not support the operations
-            # we're trying to perform. In this case, we just fall back to the parent's type
-            # name.
+            # This catch-all isn't very nice, but we may get unexpected errors when trying
+            # to iterate over containers. For example, they may be modified concurrently,
+            # or they may not implement iteration properly (I've seen this in the wild).
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:

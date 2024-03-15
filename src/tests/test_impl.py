@@ -305,7 +305,7 @@ class TestContainerNameFinder:
         names = ObjectNameFinder().get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"DictWithoutItems[mykey]"}
+        assert names == {f"DictWithoutItems (object)"}
         assert my_dict["mykey"] is local_ref
 
 
@@ -376,7 +376,7 @@ class TestGlobalVariableNameFinder:
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph([the_reference], module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph_for_list([the_reference], module_prefixes=["tests"])
         nx_graph = graph.to_networkx()
         graph.print()
         # TODO: Make this test better
@@ -384,6 +384,6 @@ class TestGetReferrerGraph:
 
     def test_graph_builder_excluded(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph([the_reference], module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph_for_list([the_reference], module_prefixes=["tests"])
         for node in graph.to_networkx().nodes:
             assert "_ReferrerGraphBuilder" not in node.name

@@ -1,1 +1,1 @@
-from referrers.impl import get_referrer_graph, ReferrerGraph
+from referrers.impl import get_referrer_graph_for_list, ReferrerGraph
