@@ -304,24 +304,33 @@ class ObjectNameFinder(ReferrerNameFinder):
 
     def _get_container_names(self, target_object: Any, parent_object: Any) -> Set[str]:
         names = set()
-        if isinstance(
-            parent_object, (collections.abc.Mapping, collections.abc.MutableMapping)
-        ):
-            matching_keys = {
-                key for key, value in parent_object.items() if value is target_object
-            }
-            for key in matching_keys:
-                names.add(f"{type(parent_object).__name__}[{key}]")
-        elif isinstance(
-            parent_object, (collections.abc.Sequence, collections.abc.MutableSequence)
-        ):
-            matching_indices = {
-                index
-                for index, value in enumerate(parent_object)
-                if value is target_object
-            }
-            for index in matching_indices:
-                names.add(f"{type(parent_object).__name__}[{index}]")
+        try:
+            if isinstance(
+                parent_object, (collections.abc.Mapping, collections.abc.MutableMapping)
+            ):
+                matching_keys = {
+                    key
+                    for key, value in parent_object.items()
+                    if value is target_object
+                }
+                for key in matching_keys:
+                    names.add(f"{type(parent_object).__name__}[{key}]")
+            elif isinstance(
+                parent_object,
+                (collections.abc.Sequence, collections.abc.MutableSequence),
+            ):
+                matching_indices = {
+                    index
+                    for index, value in enumerate(parent_object)
+                    if value is target_object
+                }
+                for index in matching_indices:
+                    names.add(f"{type(parent_object).__name__}[{index}]")
+        except Exception:
+            # This is a catch-all because some containers may not support the operations
+            # we're trying to perform. In this case, we just fall back to the parent's type
+            # name.
+            pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
             names.add(f"{type(parent_object).__name__} (object)")

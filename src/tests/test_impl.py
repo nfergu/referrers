@@ -59,6 +59,11 @@ class TargetClass:
         self._running = False
 
 
+class DictWithoutItems(dict):
+    def items(self):
+        raise NotImplementedError("This dict is not iterable")
+
+
 def _one(iterable: Iterable):
     iterator = iter(iterable)
     try:
@@ -291,6 +296,17 @@ class TestContainerNameFinder:
         assert names == {f".contained_attribute (instance attribute)"}
         assert containing_class.my_attribute is local_ref
         assert outer_class.contained_attribute is containing_class
+
+    def test_with_dict_that_does_not_support_getting_items(self):
+        # Tests what happens when we have a dict where we cannot get items from it.
+        # These seem to exist in the wild.
+        local_ref = TestClass1()
+        my_dict = DictWithoutItems(mykey=local_ref)
+        names = ObjectNameFinder().get_names(
+            local_ref, _one(gc.get_referrers(local_ref))
+        )
+        assert names == {f"DictWithoutItems[mykey]"}
+        assert my_dict["mykey"] is local_ref
 
 
 class TestModuleLevelNameFinder:
