@@ -10,14 +10,15 @@ from types import FrameType
 from typing import (
     Any,
     Collection,
+    Deque,
     Iterable,
+    List,
     Mapping,
     Optional,
     Sequence,
     Set,
+    TextIO,
     Tuple,
-    Deque,
-    TextIO, List,
 )
 
 import networkx as nx
@@ -30,10 +31,33 @@ _TYPE_MODULE_VARIABLE = "module variable"
 
 @dataclass(frozen=True)
 class ReferrerGraphNode:
+    """
+    Represents a node in a referrer graph.
+    """
+
     name: str
+    """
+    A meaningful name for the referrer. For example, if the referrer is a local variable,
+    the name would be the variable name, suffixed with "(local)".
+    """
+
     id: int
+    """
+    A unique ID for the referrer object. If the referrer is not an object then this is the
+    ID of the object it refers to.
+    """
+
     type: str
+    """
+    A string representing the type of referrer. For example, if the referrer is a local
+    variable, this would be "local".
+    """
+
     is_cycle: bool = False
+    """
+    Whether the referrer is part of a cycle in the graph. If this is `True`, the referrer
+    will be the last node in a branch of the graph.
+    """
 
     def __str__(self):
         return f"{self.name} (id={self.id})" + (
@@ -60,14 +84,7 @@ class ReferrerGraph(ABC):
     """
 
     @abstractmethod
-    def print(self, file=None) -> None:
-        """
-        Prints the referrer graph.
-
-        The graph is printed to `stdout` by default. The file parameter can be used to
-        specify a different file to print to. The file argument must be an object with a
-        `write(string)` method.
-        """
+    def __str__(self):
         pass
 
     @abstractmethod
@@ -79,7 +96,13 @@ class ReferrerGraph(ABC):
         """
         pass
 
-def get_referrer_graph(target_object: Any, module_prefixes: Collection[str]):
+
+def get_referrer_graph(
+    target_object: Any,
+    module_prefixes: Collection[str],
+    max_depth: Optional[int] = 10,
+    exclude_object_ids: Optional[Sequence[int]] = None,
+) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target object.
 
@@ -87,14 +110,32 @@ def get_referrer_graph(target_object: Any, module_prefixes: Collection[str]):
 
     :param target_object: The object to analyze.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
+    :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
+        `None` to search to unlimited depth (but be careful with this: it may take a long time).
+    :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
     """
-    return get_referrer_graph_for_list([target_object], module_prefixes)
+    exclude_object_ids = exclude_object_ids or []
+    exclude_object_ids = list(exclude_object_ids)
+
+    # Always exclude the current frame's locals, as it's not interesting to report references
+    # in our internal implementation.
+    exclude_object_ids.append(id(locals()))
+
+    return get_referrer_graph_for_list(
+        [target_object],
+        module_prefixes,
+        max_depth=max_depth,
+        exclude_object_ids=exclude_object_ids,
+    )
 
 
 def get_referrer_graph_for_list(
-    target_objects: List[Any], module_prefixes: Collection[str]
+    target_objects: List[Any],
+    module_prefixes: Collection[str],
+    max_depth: Optional[int] = 10,
+    exclude_object_ids: Optional[Sequence[int]] = None,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the list of target objects. All objects in the
@@ -104,13 +145,37 @@ def get_referrer_graph_for_list(
 
     :param target_objects: The objects to analyze. This must be a list.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
+    :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
+        `None` to search to unlimited depth (but be careful with this: it may take a long time).
+    :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
     """
+    # We don't allow any iterable, only lists. This is because it's easy to accidentally
+    # pass a single big object (like a Pandas dataframe) that is iterable and would be
+    # very slow to analyze.
     if not isinstance(target_objects, list):
         raise ValueError("target_objects must be a list")
-    builder = _ReferrerGraphBuilder(target_objects, module_prefixes)
-    return builder.build()
+
+    exclude_object_ids = exclude_object_ids or []
+    exclude_object_ids = list(exclude_object_ids)
+
+    # Always exclude the current frame's locals, as it's not interesting to report references
+    # in our internal implementation.
+    exclude_object_ids.append(id(locals()))
+
+    # Always exclude all locals and globals dicts, otherwise we get effectively duplicated
+    # references to the same objects (once as a local or global, and once as a referrer from
+    # the locals or globals dict).
+    for thread_frames in _get_frames_for_all_threads().values():
+        for frame in thread_frames:
+            exclude_object_ids.append(id(frame.f_locals))
+            exclude_object_ids.append(id(frame.f_globals))
+
+    builder = _ReferrerGraphBuilder(
+        target_objects, module_prefixes, exclude_object_ids=exclude_object_ids
+    )
+    return builder.build(max_depth=max_depth)
 
 
 class NameFinder(ABC):
@@ -276,14 +341,11 @@ class ObjectNameFinder(ReferrerNameFinder):
     Gets the names of objects that refer to the target object.
     """
 
-    def __init__(self, excluded_referrers: Optional[Sequence[Any]] = None):
-        if excluded_referrers is None:
-            self._excluded_referrer_ids = []
-        else:
-            self._excluded_referrer_ids = [id(obj) for obj in excluded_referrers]
+    def __init__(self, exclude_object_ids: Optional[Sequence[Any]] = None):
+        self._exclude_object_ids = set(exclude_object_ids or [])
 
     def get_names(self, target_object: Any, parent_object: Any) -> Set[str]:
-        if id(parent_object) in self._excluded_referrer_ids:
+        if id(parent_object) in self._exclude_object_ids:
             return set()
         else:
             instance_attribute_names = self._get_instance_attribute_names(
@@ -400,12 +462,8 @@ class _ReferrerGraph(ReferrerGraph):
     def __init__(self, graph: nx.DiGraph):
         self._graph = graph
 
-    def print(self, file: Optional[TextIO] = None) -> None:
-        if file is None:
-            file = sys.stdout
-        print()
-        for line in nx.generate_network_text(self._graph):
-            print(line, file=file)
+    def __str__(self):
+        return "\n" + "\n".join(line for line in nx.generate_network_text(self._graph))
 
     def to_networkx(self) -> nx.DiGraph:
         return self._graph
@@ -416,7 +474,12 @@ class _ReferrerGraphBuilder:
     Builds a graph of referrers for a set of target objects.
     """
 
-    def __init__(self, target_objects: Iterable[Any], module_prefixes: Collection[str]):
+    def __init__(
+        self,
+        target_objects: Iterable[Any],
+        module_prefixes: Collection[str],
+        exclude_object_ids: Optional[Sequence[Any]] = None,
+    ):
         self._target_objects = target_objects
         # Note: when we create the name finders is important because some implementations
         # start to track the objects that are in the environment when they are created.
@@ -424,10 +487,11 @@ class _ReferrerGraphBuilder:
         # Exclude the builder and its attributes from the referrer name finders, since we
         # store a reference to the target objects. Also exclude the target objects container.
         self._referrer_name_finders = _get_referrer_name_finders(
-            excluded_referrers=[self, self.__dict__, target_objects]
+            exclude_object_ids=[id(self), id(self.__dict__), id(target_objects)]
+            + list(exclude_object_ids)
         )
 
-    def build(self) -> ReferrerGraph:
+    def build(self, max_depth: Optional[int]) -> ReferrerGraph:
         graph = nx.DiGraph()
 
         stack: Deque[Tuple[ReferrerGraphNode, Any, int]] = collections.deque(
@@ -441,26 +505,30 @@ class _ReferrerGraphBuilder:
         while stack:
             target_graph_node, target_object, depth = stack.pop()
 
-            # For each referrer of the target object, find the name(s) of the referrer and
-            # add an edge to the graph for each
-            for referrer_object in gc.get_referrers(target_object):
-                referrer_id = id(referrer_object)
-                seen = referrer_id in seen_ids
-                referrer_nodes = self._get_referrer_nodes(
-                    target_object=target_object,
-                    referrer=referrer_object,
-                    seen=seen,
-                )
-                for referrer_graph_node in referrer_nodes:
-                    graph.add_edge(target_graph_node, referrer_graph_node)
-                    # Avoid an infinite loop by only adding referrers that we haven't seen
-                    # before. We still add the relevant edge to the graph so we can see the
-                    # relationship though.
-                    if not seen:
-                        seen_ids.add(referrer_id)
-                        stack.append((referrer_graph_node, referrer_object, depth + 1))
+            if max_depth is None or depth < max_depth:
+                # For each referrer of the target object, find the name(s) of the referrer and
+                # add an edge to the graph for each
+                for referrer_object in gc.get_referrers(target_object):
+                    referrer_id = id(referrer_object)
+                    seen = referrer_id in seen_ids
+                    referrer_nodes = self._get_referrer_nodes(
+                        target_object=target_object,
+                        referrer=referrer_object,
+                        seen=seen,
+                    )
+                    for referrer_graph_node in referrer_nodes:
+                        graph.add_edge(target_graph_node, referrer_graph_node)
+                        # Avoid an infinite loop by only adding referrers that we haven't seen
+                        # before. We still add the relevant edge to the graph so we can see the
+                        # relationship though.
+                        if not seen:
+                            seen_ids.add(referrer_id)
+                            stack.append(
+                                (referrer_graph_node, referrer_object, depth + 1)
+                            )
 
-            # For each non-referrer name pointing to the target object, add an edge to the graph.
+            # For each non-referrer name pointing to the target object, add an edge to
+            # the graph.
             non_referrer_nodes = self._get_non_referrer_nodes(target_object)
             for non_referrer_graph_node in non_referrer_nodes:
                 graph.add_edge(target_graph_node, non_referrer_graph_node)
@@ -527,9 +595,9 @@ def _get_name_finders(module_prefixes: Collection[str]) -> Sequence[NameFinder]:
 
 
 def _get_referrer_name_finders(
-    excluded_referrers: Sequence[Any],
+    exclude_object_ids: Sequence[int],
 ) -> Sequence[ReferrerNameFinder]:
-    return [ObjectNameFinder(excluded_referrers=excluded_referrers)]
+    return [ObjectNameFinder(exclude_object_ids=exclude_object_ids)]
 
 
 def _get_global_vars() -> Set[_GlobalVariable]:

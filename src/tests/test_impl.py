@@ -1,8 +1,12 @@
+import collections
+import dataclasses
 import gc
 from time import sleep
 
 import threading
-from typing import Iterable, Dict, Any
+from typing import Iterable, Dict, Any, Optional
+
+from networkx import bfs_tree, bfs_edges, DiGraph
 
 import referrers
 from referrers.impl import (
@@ -35,6 +39,11 @@ class TestClass3:
 class DictContainer:
     def __init__(self, my_dict: Dict[Any, Any]):
         self.my_dict = my_dict
+
+
+class Link:
+    def __init__(self, next_link: Optional["Link"] = None):
+        self.next_link = next_link
 
 
 class TestClass2Container:
@@ -373,17 +382,83 @@ class TestGlobalVariableNameFinder:
         }
 
 
+class A:
+    def __init__(self, instance_var: str):
+        self.instance_var = instance_var
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph_for_list([the_reference], module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
         nx_graph = graph.to_networkx()
-        graph.print()
-        # TODO: Make this test better
-        assert nx_graph.number_of_nodes() == 3
+        print(graph)
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["TestClass1"] == [root.name for root in roots]
+        bfs_names = [
+            (edge[0].name, edge[1].name)
+            for edge in bfs_edges(nx_graph, source=_one(roots))
+        ]
+        assert bfs_names == [
+            ("TestClass1", "test_get_referrer_graph.the_reference (local)"),
+        ]
+
+    def test_passed_object_excluded(self):
+        # Check that we exclude our internal reference to the target object from
+        # the graph.
+        the_reference = TestClass1()
+        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
+        for node in graph.to_networkx().nodes:
+            assert "target_object" not in node.name
 
     def test_graph_builder_excluded(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph_for_list([the_reference], module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
+        print(graph)
         for node in graph.to_networkx().nodes:
             assert "_ReferrerGraphBuilder" not in node.name
+
+    def test_max_depth(self):
+        link = Link(None)
+        original_link = link
+        for i in range(30):
+            link = Link(link)
+        graph = referrers.get_referrer_graph(
+            original_link, module_prefixes=["tests"], max_depth=12
+        )
+        nx_graph = graph.to_networkx()
+        # There are two levels in the graph for each link: the Link object and the instance
+        # attribute that points at the next link.
+        instance_attribute_nodes = [
+            node for node in nx_graph.nodes if "instance attribute" in node.name
+        ]
+        link_nodes = [node for node in nx_graph.nodes if "Link (object)" in node.name]
+        assert len(instance_attribute_nodes) + len(link_nodes) == 12
+
+    def test_untracked_object_as_local(self):
+        # In this case "hello" is not tracked by the garbage collector, and A.__dict__
+        # is not tracked either (although this is CPython-specific I think). So we won't
+        # find any referrers for "hello".
+        a = A("hello")
+        assert not gc.is_tracked(a.instance_var)
+        graph = referrers.get_referrer_graph(a.instance_var, module_prefixes=["tests"])
+        assert a.instance_var == "hello"
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            ".instance_var" in node_name for node_name in node_names
+        ), f"Did not find .instance_var in graph {graph}"
+
+    def test_untracked_object_referred_to_from_local(self):
+        # In this case we have a tracked object (ref: my_dict), which refers to an untracked
+        # object (ref: a).
+        a = A("hello")
+        my_dict = {"a": a}
+        assert not gc.is_tracked(a.instance_var)
+        assert gc.is_tracked(my_dict)
+        graph = referrers.get_referrer_graph(a.instance_var, module_prefixes=["tests"])
+        assert a.instance_var == "hello"
+        assert my_dict["a"] is a
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            ".instance_var" in node_name for node_name in node_names
+        ), f"Did not find .instance_var in graph {graph}"
