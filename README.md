@@ -23,8 +23,9 @@ class ContainerClass:
     instance_attribute: ChildClass
 
 def my_function():
-    local_variable = ContainerClass(ChildClass())
-    print(referrers.get_referrer_graph(local_variable.instance_attribute))
+    child_variable = ChildClass()
+    container_variable = ContainerClass(child_variable)
+    print(referrers.get_referrer_graph(child_variable))
 
 my_function()
 ```
@@ -32,11 +33,16 @@ my_function()
 Will output something like:
 
 ```plaintext
-╙── ChildClass (id=4386629440)
-    └─╼ .instance_attribute (instance attribute) (id=4388628032)
-        └─╼ ContainerClass (object) (id=4386632272)
-            └─╼ my_function.local_variable (local) (id=4386632272)
+╙── ChildClass (id=4355177920)
+    ├─╼ .instance_attribute (instance attribute) (id=4357186944)
+    │   └─╼ ContainerClass (object) (id=4355171584)
+    │       └─╼ my_function.container_variable (local) (id=4355171584)
+    └─╼ my_function.child_variable (local) (id=4355177920)
 ```
+
+In this case the instance of `ChildClass` that is passed to `referrers.get_referrer_graph`
+is referenced directly by the `child_variable` local variable, and also indirectly
+via `ContainerClass.instance_attribute`.
 
 Note: this library is experimental and may not work in all cases. It is also not very
 efficient, so should not be used in performance-critical code.
@@ -100,7 +106,7 @@ def my_function():
 By default, `get_referrer_graph` will only include objects that are tracked by the garbage
 collector. However, the `search_for_untracked_objects` flag can be set to `True` to also
 include objects that are not tracked by the garbage collector. This option is experimental
-and may not work in all cases.
+and may not work well in all cases.
 
 ### Known limitations with untracked objects
 
@@ -108,10 +114,8 @@ and may not work in all cases.
   parameter. If this is set too low, some untracked objects may be missing from the graph.
   Try setting this to a higher value if you think this is happening
 * Sometimes internal references (from within `referrers`) may be included in the graph when
-  finding untracked objects. It should be possible to get rid of these, but I haven't done
-  so yet.
-* There may be situations where references to untracked objects are not found if there are
-  module-level references to them that are also not tracked.
+  finding untracked objects. It should be possible to get rid of these, but I haven't
+  managed to track them all down yet.
 * Finding untracked objects may be slow.
 
 ## TODO
