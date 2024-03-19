@@ -33,7 +33,7 @@ my_function()
 Will output something like:
 
 ```plaintext
-╙── ChildClass (id=4355177920)
+╙── ChildClass instance (id=4355177920)
     ├─╼ .instance_attribute (instance attribute) (id=4357186944)
     │   └─╼ ContainerClass (object) (id=4355171584)
     │       └─╼ my_function.container_variable (local) (id=4355171584)
