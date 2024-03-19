@@ -1,8 +1,5 @@
 import gc
 from time import sleep
-
-import gc
-from time import sleep
 import threading
 from typing import Any, Dict, Iterable, Optional
 
