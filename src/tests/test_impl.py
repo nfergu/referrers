@@ -1,21 +1,22 @@
-import collections
-import dataclasses
 import gc
 from time import sleep
 
+import gc
+from time import sleep
 import threading
-from typing import Iterable, Dict, Any, Optional
+from typing import Any, Dict, Iterable, Optional
 
-from networkx import bfs_tree, bfs_edges, DiGraph
+import pytest
+from networkx import bfs_edges
 
 import referrers
 from referrers.impl import (
-    LocalVariableNameFinder,
-    ObjectNameFinder,
     GlobalVariableNameFinder,
+    LocalVariableNameFinder,
     ModuleLevelNameFinder,
+    ObjectNameFinder,
 )
-from tests.testing_modules.module2 import imported_module_variable, Module2TestClass
+from tests.testing_modules.module2 import imported_module_variable
 
 
 class TestClass1:
@@ -322,11 +323,11 @@ class TestModuleLevelNameFinder:
     def test_variable_from_non_imported_module(self):
         # Here we're testing the case where the module containing the variable has not been
         # imported directly, and is therefore not in globals. We rely on conftest.py to import
-        # the module (pytest does this automatically). We also rely on the fact that 97 is
+        # the module (pytest does this automatically). We also rely on the fact that 178 is
         # interned, so we can provide exactly the same object as module_variable refers to
         # without importing it (we also rely on the fact that there are no other module-level
-        # references to 97 in this program).
-        names = ModuleLevelNameFinder("tests.testing_modules").get_names(97)
+        # references to 178 in this program).
+        names = ModuleLevelNameFinder("tests.testing_modules").get_names(178)
         assert names == {
             "tests.testing_modules.module1.module_variable (module variable)"
         }
@@ -346,7 +347,7 @@ class TestModuleLevelNameFinder:
     def test_scope_does_not_match(self):
         # Although the variable is a module-level variable, it's not in the module prefix
         # that we're searching for.
-        names = ModuleLevelNameFinder("tests.not_matching").get_names(97)
+        names = ModuleLevelNameFinder("tests.not_matching").get_names(178)
         assert names == set()
 
     def test_global_variable_not_found(self):
@@ -390,7 +391,7 @@ class A:
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(the_reference)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1"] == [root.name for root in roots]
@@ -402,17 +403,55 @@ class TestGetReferrerGraph:
             ("TestClass1", "test_get_referrer_graph.the_reference (local)"),
         ]
 
+    def test_get_referrer_graph_for_list(self):
+        the_reference = TestClass1()
+        the_reference2 = TestClass2(my_attribute=the_reference)
+        graph = referrers.get_referrer_graph_for_list([the_reference, the_reference2])
+        print(graph)
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert {"TestClass1", "TestClass2"} == set(root.name for root in roots)
+        for root in roots:
+            bfs_names = [
+                (edge[0].name, edge[1].name)
+                for edge in bfs_edges(nx_graph, source=root)
+            ]
+            if root.name == "TestClass1":
+                assert bfs_names == [
+                    (
+                        "TestClass1",
+                        ".my_attribute (instance attribute)",
+                    ),
+                    (
+                        "TestClass1",
+                        "test_get_referrer_graph_for_list.the_reference (local)",
+                    ),
+                    (
+                        ".my_attribute (instance attribute)",
+                        "TestClass2 (object)",
+                    ),
+                ]
+            elif root.name == "TestClass2":
+                assert bfs_names == [
+                    (
+                        "TestClass2",
+                        "test_get_referrer_graph_for_list.the_reference2 (local)",
+                    )
+                ]
+            else:
+                raise AssertionError(f"Unexpected root: {root}")
+
     def test_passed_object_excluded(self):
         # Check that we exclude our internal reference to the target object from
         # the graph.
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(the_reference)
         for node in graph.to_networkx().nodes:
             assert "target_object" not in node.name
 
     def test_graph_builder_excluded(self):
         the_reference = TestClass1()
-        graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(the_reference)
         for node in graph.to_networkx().nodes:
             assert "_ReferrerGraphBuilder" not in node.name
 
@@ -422,7 +461,8 @@ class TestGetReferrerGraph:
         for i in range(30):
             link = Link(link)
         graph = referrers.get_referrer_graph(
-            original_link, module_prefixes=["tests"], max_depth=12
+            original_link,
+            max_depth=12,
         )
         nx_graph = graph.to_networkx()
         # There are two levels in the graph for each link: the Link object and the instance
@@ -440,7 +480,9 @@ class TestGetReferrerGraph:
         # reference to the_dict in the graph as a local variable.
         the_dict = {"a": "hello"}
         assert not gc.is_tracked(the_dict)
-        graph = referrers.get_referrer_graph(the_dict, module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(
+            the_dict, search_for_untracked_objects=True
+        )
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -457,7 +499,9 @@ class TestGetReferrerGraph:
         the_dict = {"a": "hello"}
         assert not gc.is_tracked(the_dict)
         assert not gc.is_tracked(the_dict["a"])
-        graph = referrers.get_referrer_graph(the_dict["a"], module_prefixes=["tests"])
+        graph = referrers.get_referrer_graph(
+            the_dict["a"], search_for_untracked_objects=True
+        )
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -474,7 +518,8 @@ class TestGetReferrerGraph:
         assert not gc.is_tracked(the_obj.__dict__)
         assert not gc.is_tracked(the_obj.instance_var)
         graph = referrers.get_referrer_graph(
-            the_obj.instance_var, module_prefixes=["tests"]
+            the_obj.instance_var,
+            search_for_untracked_objects=True,
         )
         assert the_obj.instance_var == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
@@ -484,3 +529,61 @@ class TestGetReferrerGraph:
         ), str(graph)
         assert any("A (object)" in node_name for node_name in node_names), str(graph)
         assert any(".instance_var" in node_name for node_name in node_names), str(graph)
+
+    def test_untracked_object_not_enabled(self):
+        a = "hello"
+        assert not gc.is_tracked(a)
+        with pytest.raises(
+            ValueError,
+            match="Some target objects are not tracked by the garbage collector.*",
+        ):
+            referrers.get_referrer_graph(a)
+
+    def test_get_referrer_graph_for_unimported_module_with_explicit_module_prefix(self):
+        # The module module1 is not imported, but has been loaded by the test runner.
+        # It defines module_variable = 178.
+        graph = referrers.get_referrer_graph(
+            178, module_prefixes=["tests"], search_for_untracked_objects=True
+        )
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["int"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "tests.testing_modules.module1.module_variable (module variable)"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_get_referrer_graph_for_unimported_module_without_explicit_module_prefix(
+        self,
+    ):
+        # The module module1 is not imported, but has been loaded by the test runner.
+        # It defines module_variable = 178.
+        graph = referrers.get_referrer_graph(178, search_for_untracked_objects=True)
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["int"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "tests.testing_modules.module1.module_variable (module variable)"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_get_referrer_graph_for_unimported_module_referencing_untracked_object(
+        self,
+    ):
+        # The module module1 is not imported, but has been loaded by the test runner.
+        # It defines a class called IntContainer with an instance attribute that references
+        # 145.
+        graph = referrers.get_referrer_graph(145, search_for_untracked_objects=True)
+        print(graph)
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["int"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            ".int_container_value (instance attribute)" in node_name
+            for node_name in node_names
+        ), str(graph)

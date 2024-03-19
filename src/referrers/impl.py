@@ -100,9 +100,10 @@ class ReferrerGraph(ABC):
 
 def get_referrer_graph(
     target_object: Any,
-    module_prefixes: Collection[str],
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
+    module_prefixes: Optional[Collection[str]] = None,
+    search_for_untracked_objects: bool = False,
     max_untracked_search_depth: int = 10,
 ) -> ReferrerGraph:
     """
@@ -111,10 +112,17 @@ def get_referrer_graph(
     To analyze a list of objects, use `get_referrer_graph_for_list` instead.
 
     :param target_object: The object to analyze.
-    :param module_prefixes: The prefixes of the modules to search for module-level variables.
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
         `None` to search to unlimited depth (but be careful with this: it may take a long time).
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
+    :param module_prefixes: The prefixes of the modules to search for module-level variables.
+        If this is not specified, the top-level package of the calling code is used.
+    :param search_for_untracked_objects: Whether to search for referrers of objects that are
+        not tracked by the garbage collector. By default, this is `False` because it can be
+        slow to search for untracked objects, and it is not reliable in all cases. If this is
+        set to `False` and `target_object` is untracked, an error will be raised. If this is
+        set to `True` then `max_untracked_search_depth` is used to control the depth of the
+        search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 10. If you are missing referrers of untracked objects, you
@@ -128,18 +136,20 @@ def get_referrer_graph(
 
     return get_referrer_graph_for_list(
         [target_object],
-        module_prefixes,
         max_depth=max_depth,
         exclude_object_ids=exclude_object_ids,
+        module_prefixes=module_prefixes,
+        search_for_untracked_objects=search_for_untracked_objects,
         max_untracked_search_depth=max_untracked_search_depth,
     )
 
 
 def get_referrer_graph_for_list(
     target_objects: List[Any],
-    module_prefixes: Collection[str],
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
+    module_prefixes: Optional[Collection[str]] = None,
+    search_for_untracked_objects: bool = False,
     max_untracked_search_depth: int = 10,
 ) -> ReferrerGraph:
     """
@@ -149,10 +159,17 @@ def get_referrer_graph_for_list(
     The `target_objects` list is excluded from the referrer grap.
 
     :param target_objects: The objects to analyze. This must be a list.
-    :param module_prefixes: The prefixes of the modules to search for module-level variables.
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
         `None` to search to unlimited depth (but be careful with this: it may take a long time).
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
+    :param module_prefixes: The prefixes of the modules to search for module-level variables.
+        If this is `None`, the top-level package of the calling code is used.
+    :param search_for_untracked_objects: Whether to search for referrers of objects that are
+        not tracked by the garbage collector. By default, this is `False` because it can be
+        slow to search for untracked objects, and it is not reliable in all cases. If this is
+        set to `False` and any of `target_objects` are untracked, an error will be raised. If
+        this is set to `True` then `max_untracked_search_depth` is used to control the depth of
+        the search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 10. If you are missing referrers of untracked objects, you
@@ -177,6 +194,16 @@ def get_referrer_graph_for_list(
         for frame in thread_frames:
             exclude_object_ids.append(id(frame.f_locals))
             exclude_object_ids.append(id(frame.f_globals))
+
+    if not search_for_untracked_objects:
+        untracked_objects = [obj for obj in target_objects if not gc.is_tracked(obj)]
+        if untracked_objects:
+            raise ValueError(
+                "Some target objects are not tracked by the garbage collector. "
+                "Set search_for_untracked_objects to True to search for referrers of "
+                "these objects, but bear in mind that this can be slow and may not be "
+                "reliable in all cases."
+            )
 
     builder = _ReferrerGraphBuilder(
         target_objects,
@@ -237,11 +264,13 @@ class LocalVariableNameFinder(NameFinder):
     def get_names(self, target_object: Any) -> Set[str]:
         names = set()
         if id(target_object) in self._local_var_ids:
-            this_frame = inspect.currentframe()
             for thread_frames in _get_frames_for_all_threads().values():
                 for frame in thread_frames:
-                    # Exclude the frame of the call to get_names.
-                    if frame is not this_frame:
+                    frame_module = inspect.getmodule(frame)
+                    # Exclude all frames from the referrers package.
+                    if frame_module is None or (
+                        not frame_module.__name__.startswith("referrers")
+                    ):
                         frame_names = self._get_frame_names(frame, target_object)
                         # Don't go any further down the stack for this thread if we've found some
                         # names for the object in this frame.
@@ -257,11 +286,20 @@ class LocalVariableNameFinder(NameFinder):
         :param target_object: The object to search for.
         :return: A set of local_names of the target object in the frame.
         """
-        return {
-            f"{frame.f_code.co_name}.{var_name} ({_TYPE_LOCAL})"
-            for var_name, var_value in frame.f_locals.items()
-            if var_value is target_object
-        }
+        attempt = 0
+        while attempt <= 10:
+            attempt += 1
+            try:
+                return {
+                    f"{frame.f_code.co_name}.{var_name} ({_TYPE_LOCAL})"
+                    for var_name, var_value in frame.f_locals.items()
+                    if var_value is target_object
+                }
+            except RuntimeError:
+                # The dict may change size during iteration, so we catch this exception and
+                # try again
+                pass
+        return set()
 
     def get_type(self) -> str:
         return _TYPE_LOCAL
@@ -302,15 +340,24 @@ class GlobalVariableNameFinder(NameFinder):
         :param target_object: The object to search for.
         :return: A set of local_names of the target object in the frame.
         """
-        names = set()
-        for var_name, var_value in frame.f_globals.items():
-            if var_value is target_object:
-                module = inspect.getmodule(var_value)
-                if module:
-                    names.add(f"{module.__name__}.{var_name} ({_TYPE_GLOBAL})")
-                else:
-                    names.add(f"{var_name} ({_TYPE_GLOBAL})")
-        return names
+        attempt = 0
+        while attempt <= 10:
+            attempt += 1
+            try:
+                names = set()
+                for var_name, var_value in frame.f_globals.items():
+                    if var_value is target_object:
+                        module = inspect.getmodule(var_value)
+                        if module:
+                            names.add(f"{module.__name__}.{var_name} ({_TYPE_GLOBAL})")
+                        else:
+                            names.add(f"{var_name} ({_TYPE_GLOBAL})")
+                return names
+            except RuntimeError:
+                # The dict may change size during iteration, so we catch this exception and
+                # try again
+                pass
+        return set()
 
     def get_type(self) -> str:
         return _TYPE_GLOBAL
@@ -358,7 +405,7 @@ class ObjectNameFinder(ReferrerNameFinder):
             return set()
         else:
             instance_attribute_names = self._get_instance_attribute_names(
-                parent_object, target_object
+                target_object, parent_object
             )
             # If the parent object contains instance attributes that refer to the target object,
             # return these. Otherwise, return a more general name for the parent object.
@@ -367,7 +414,7 @@ class ObjectNameFinder(ReferrerNameFinder):
             else:
                 return self._get_container_names(target_object, parent_object)
 
-    def _get_instance_attribute_names(self, parent_object: Any, target_object: Any):
+    def _get_instance_attribute_names(self, target_object: Any, parent_object: Any):
         names = set()
         grandparents = gc.get_referrers(parent_object)
         # If the parent has referrers, we need to check if any of them are classes with
@@ -414,9 +461,11 @@ class ObjectNameFinder(ReferrerNameFinder):
                 }
                 for index in matching_indices:
                     names.add(f"{type(parent_object).__name__}[{index}]")
-        except NotImplementedError:
+        except Exception:
             # Certain containers don't support iteration. We can't do anything about that
             # so we just fall-back to the more general name for the parent object.
+            # The catch-all exception isn't ideal, but we don't know what exceptions
+            # the container types might raise.
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
@@ -439,7 +488,14 @@ class ModuleLevelNameFinder(NameFinder):
     target object, the global variable is not included in the results.
     """
 
-    def __init__(self, module_prefix):
+    def __init__(self, module_prefix: str):
+        """
+        Initializes the name finder.
+
+        :param module_prefix: The prefix to use when searching for modules. If `None`, the
+            prefix is determined by the top-level package of the first frame in the call stack
+            that is not part of the `referrers` package.
+        """
         self._modules = [
             module
             for name, module in sys.modules.items()
@@ -485,11 +541,22 @@ class _ReferrerGraphBuilder:
     def __init__(
         self,
         target_objects: Iterable[Any],
-        module_prefixes: Collection[str],
+        module_prefixes: Optional[Collection[str]],
         max_untracked_search_depth: int,
         exclude_object_ids: Optional[Sequence[int]] = None,
     ):
-
+        if not module_prefixes:
+            stack_frames = inspect.stack()
+            for frame_info in stack_frames:
+                frame_module = inspect.getmodule(frame_info.frame).__name__
+                if not frame_module.startswith("referrers"):
+                    module_prefixes = [frame_module.split(".")[0]]
+                    break
+        if not module_prefixes:
+            raise ValueError(
+                "Could not determine the top-level package of the calling code. "
+                "Please specify the module_prefixes parameter to set this explicitly."
+            )
         excluded_id_set = {id(self), id(self.__dict__), id(target_objects)} | set(
             exclude_object_ids
         )
@@ -498,6 +565,7 @@ class _ReferrerGraphBuilder:
             target_objects,
             excluded_id_set=excluded_id_set,
             max_depth=max_untracked_search_depth,
+            module_prefixes=module_prefixes,
         )
         # Note: when we create the name finders is important because some implementations
         # start to track the objects that are in the environment when they are created.
@@ -530,23 +598,24 @@ class _ReferrerGraphBuilder:
                 # For each referrer of the target object, find the name(s) of the referrer and
                 # add an edge to the graph for each
                 for referrer_object in self._get_referrers(target_object):
-                    referrer_id = id(referrer_object)
-                    seen = referrer_id in seen_ids
-                    referrer_nodes = self._get_referrer_nodes(
-                        target_object=target_object,
-                        referrer=referrer_object,
-                        seen=seen,
-                    )
-                    for referrer_graph_node in referrer_nodes:
-                        graph.add_edge(target_graph_node, referrer_graph_node)
-                        # Avoid an infinite loop by only adding referrers that we haven't seen
-                        # before. We still add the relevant edge to the graph so we can see the
-                        # relationship though.
-                        if not seen:
-                            seen_ids.add(referrer_id)
-                            stack.append(
-                                (referrer_graph_node, referrer_object, depth + 1)
-                            )
+                    if not self._is_excluded(referrer_object):
+                        referrer_id = id(referrer_object)
+                        seen = referrer_id in seen_ids
+                        referrer_nodes = self._get_referrer_nodes(
+                            target_object=target_object,
+                            referrer=referrer_object,
+                            seen=seen,
+                        )
+                        for referrer_graph_node in referrer_nodes:
+                            graph.add_edge(target_graph_node, referrer_graph_node)
+                            # Avoid an infinite loop by only adding referrers that we haven't seen
+                            # before. We still add the relevant edge to the graph so we can see the
+                            # relationship though.
+                            if not seen:
+                                seen_ids.add(referrer_id)
+                                stack.append(
+                                    (referrer_graph_node, referrer_object, depth + 1)
+                                )
 
             # For each non-referrer name pointing to the target object, add an edge to
             # the graph.
@@ -555,6 +624,11 @@ class _ReferrerGraphBuilder:
                 graph.add_edge(target_graph_node, non_referrer_graph_node)
 
         return _ReferrerGraph(graph)
+
+    def _is_excluded(self, obj: Any) -> bool:
+        # We exclude these objects because anything referenced by them should be picked-up
+        # elsewhere (locals global etc), and excluding them speeds things up a lot.
+        return inspect.isframe(obj) or inspect.isroutine(obj) or inspect.ismodule(obj)
 
     def _get_referrers(self, target_object: Any) -> Iterable[Any]:
         if gc.is_tracked(target_object):
@@ -608,6 +682,7 @@ class _ReferrerGraphBuilder:
         target_objects: Iterable[Any],
         excluded_id_set: Set[int],
         max_depth: int,
+        module_prefixes: Collection[str],
     ) -> Mapping[id, List[Any]]:
         """
         Builds a mapping of object IDs to referrers for objects that are not tracked by the
@@ -626,7 +701,10 @@ class _ReferrerGraphBuilder:
         # untracked objects.
         if len(untracked_target_object_ids) > 0:
 
-            roots = self._get_roots_from_locals_and_globals(do_not_visit)
+            roots = self._get_roots_from_locals_globals_and_modules(
+                do_not_visit=do_not_visit,
+                module_prefixes=module_prefixes,
+            )
             # Make sure we don't visit the roots list, or very strange things will happen!
             do_not_visit.add(id(roots))
 
@@ -693,7 +771,9 @@ class _ReferrerGraphBuilder:
                 if pop:
                     untracked_stack.pop()
 
-    def _get_roots_from_locals_and_globals(self, do_not_visit: Set[int]):
+    def _get_roots_from_locals_globals_and_modules(
+        self, do_not_visit: Set[int], module_prefixes: Optional[Collection[str]] = None
+    ) -> List[Any]:
         roots = []
         for thread_frames in _get_frames_for_all_threads().values():
             for frame in thread_frames:
@@ -704,7 +784,24 @@ class _ReferrerGraphBuilder:
                     frame.f_locals.values(), frame.f_globals.values()
                 ):
                     roots.append(var_value)
+        self._modules = [
+            module
+            for name, module in sys.modules.items()
+            if self._matches_prefixes(name, module_prefixes)
+        ]
+        self._global_vars = _get_global_vars()
+        for module in self._modules:
+            if hasattr(module, "__dict__"):
+                for var_name, var_value in module.__dict__.items():
+                    if (
+                        _GlobalVariable(var_name, id(var_value), id(module))
+                        not in self._global_vars
+                    ):
+                        roots.append(var_value)
         return roots
+
+    def _matches_prefixes(self, module_name: str, module_prefixes: Collection[str]):
+        return any(module_name.startswith(prefix) for prefix in module_prefixes)
 
 
 @dataclass(frozen=True)
@@ -714,7 +811,9 @@ class _GlobalVariable:
     module_id: Optional[int]
 
 
-def _get_name_finders(module_prefixes: Collection[str]) -> Sequence[NameFinder]:
+def _get_name_finders(
+    module_prefixes: Collection[str],
+) -> Sequence[NameFinder]:
     finders = [
         LocalVariableNameFinder(),
         GlobalVariableNameFinder(),
