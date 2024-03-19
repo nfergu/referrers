@@ -26,13 +26,10 @@ pip install git+https://github.com/nfergu/referrers.git
 
 TODO:
 
-* Write test for module-level untracked objects
-* Get rid of get_referrer_graph.target_object (local) when running
-  test_untracked_object_within_object and test_untracked_object_within_container.
-* Deal with concurrent modification when iterating through collections that could be modified
-  concurrently.
 * Remove requirement for get_module_prefixes
-* Add more tests
+* Deal with concurrent modification when iterating through collections that could be modified
+  concurrently?
+* Add test for get_referrer_graph_from_list
 * Add readme
 
 
@@ -42,5 +39,7 @@ Limitations:
   if this happens.
 * Sometimes internal references (from within referrers) may be included in the graph. I don't
   think I've managed to get rid of all of these yet.
-  
+* There may be situations where references to untracked objects are not found if there are
+  module-level references to them that are also not tracked. But I'm not sure how likely this is
+  to happen in practice.
 

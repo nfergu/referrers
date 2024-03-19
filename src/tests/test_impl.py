@@ -322,7 +322,7 @@ class TestModuleLevelNameFinder:
     def test_variable_from_non_imported_module(self):
         # Here we're testing the case where the module containing the variable has not been
         # imported directly, and is therefore not in globals. We rely on conftest.py to import
-        # the module (pytest does this automatically). We also rely on the fact that 123 is
+        # the module (pytest does this automatically). We also rely on the fact that 97 is
         # interned, so we can provide exactly the same object as module_variable refers to
         # without importing it (we also rely on the fact that there are no other module-level
         # references to 97 in this program).
@@ -458,7 +458,6 @@ class TestGetReferrerGraph:
         assert not gc.is_tracked(the_dict)
         assert not gc.is_tracked(the_dict["a"])
         graph = referrers.get_referrer_graph(the_dict["a"], module_prefixes=["tests"])
-        print(graph)
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -477,7 +476,6 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(
             the_obj.instance_var, module_prefixes=["tests"]
         )
-        print(graph)
         assert the_obj.instance_var == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
