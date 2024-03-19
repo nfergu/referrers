@@ -49,6 +49,8 @@ efficient, so should not be used in performance-critical code.
 
 ## Installation
 
+Install using `pip` directly from Github:
+
 ```bash
 pip3 install git+https://github.com/nfergu/referrers.git
 ```
