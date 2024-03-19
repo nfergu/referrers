@@ -1,12 +1,15 @@
 # Referrers
 
 This library helps to answer the question "what is holding a reference to this object?",
-and is useful for debugging memory leaks and other issues.
+which is useful for debugging memory leaks and other issues.
 
-It tries to assign a meaningful name to each reference to an object (including indirect
-references), and returns a graph of references.
+It tries to assign a meaningful name to each reference to an object and returns a graph
+of references (including indirect references).
 
-For example:
+Use the `referrers.get_referrer_graph` function to get a graph of references to a
+specific object.
+
+For example, to find references to an instance of `ChildClass:
 
 ```python
 import dataclasses
