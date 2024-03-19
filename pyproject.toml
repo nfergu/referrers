@@ -6,7 +6,7 @@ authors = ["Neil Ferguson"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3"
 networkx = "^3.2.1"
 
 [tool.poetry.dev-dependencies]
