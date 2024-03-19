@@ -6,6 +6,7 @@ import traceback
 from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
+from itertools import chain
 from types import FrameType
 from typing import (
     Any,
@@ -17,8 +18,8 @@ from typing import (
     Optional,
     Sequence,
     Set,
-    TextIO,
     Tuple,
+    Dict,
 )
 
 import networkx as nx
@@ -102,6 +103,7 @@ def get_referrer_graph(
     module_prefixes: Collection[str],
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
+    max_untracked_search_depth: int = 10,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target object.
@@ -113,21 +115,23 @@ def get_referrer_graph(
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
         `None` to search to unlimited depth (but be careful with this: it may take a long time).
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
+    :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
+        objects. This is the depth that referents will be searched from the roots (locals and
+        globals). The default is 10. If you are missing referrers of untracked objects, you
+        can increase this value.
+
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
     """
     exclude_object_ids = exclude_object_ids or []
     exclude_object_ids = list(exclude_object_ids)
 
-    # Always exclude the current frame's locals, as it's not interesting to report references
-    # in our internal implementation.
-    exclude_object_ids.append(id(locals()))
-
     return get_referrer_graph_for_list(
         [target_object],
         module_prefixes,
         max_depth=max_depth,
         exclude_object_ids=exclude_object_ids,
+        max_untracked_search_depth=max_untracked_search_depth,
     )
 
 
@@ -136,6 +140,7 @@ def get_referrer_graph_for_list(
     module_prefixes: Collection[str],
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
+    max_untracked_search_depth: int = 10,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the list of target objects. All objects in the
@@ -148,6 +153,11 @@ def get_referrer_graph_for_list(
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
         `None` to search to unlimited depth (but be careful with this: it may take a long time).
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
+    :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
+        objects. This is the depth that referents will be searched from the roots (locals and
+        globals). The default is 10. If you are missing referrers of untracked objects, you
+        can increase this value.
+
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
     """
@@ -160,10 +170,6 @@ def get_referrer_graph_for_list(
     exclude_object_ids = exclude_object_ids or []
     exclude_object_ids = list(exclude_object_ids)
 
-    # Always exclude the current frame's locals, as it's not interesting to report references
-    # in our internal implementation.
-    exclude_object_ids.append(id(locals()))
-
     # Always exclude all locals and globals dicts, otherwise we get effectively duplicated
     # references to the same objects (once as a local or global, and once as a referrer from
     # the locals or globals dict).
@@ -173,7 +179,10 @@ def get_referrer_graph_for_list(
             exclude_object_ids.append(id(frame.f_globals))
 
     builder = _ReferrerGraphBuilder(
-        target_objects, module_prefixes, exclude_object_ids=exclude_object_ids
+        target_objects,
+        module_prefixes,
+        max_untracked_search_depth=max_untracked_search_depth,
+        exclude_object_ids=exclude_object_ids,
     )
     return builder.build(max_depth=max_depth)
 
@@ -341,11 +350,11 @@ class ObjectNameFinder(ReferrerNameFinder):
     Gets the names of objects that refer to the target object.
     """
 
-    def __init__(self, exclude_object_ids: Optional[Sequence[Any]] = None):
-        self._exclude_object_ids = set(exclude_object_ids or [])
+    def __init__(self, excluded_id_set: Optional[Set[int]] = None):
+        self._excluded_id_set = excluded_id_set or set()
 
     def get_names(self, target_object: Any, parent_object: Any) -> Set[str]:
-        if id(parent_object) in self._exclude_object_ids:
+        if id(parent_object) in self._excluded_id_set:
             return set()
         else:
             instance_attribute_names = self._get_instance_attribute_names(
@@ -405,10 +414,9 @@ class ObjectNameFinder(ReferrerNameFinder):
                 }
                 for index in matching_indices:
                     names.add(f"{type(parent_object).__name__}[{index}]")
-        except Exception:
-            # This catch-all isn't very nice, but we may get unexpected errors when trying
-            # to iterate over containers. For example, they may be modified concurrently,
-            # or they may not implement iteration properly (I've seen this in the wild).
+        except NotImplementedError:
+            # Certain containers don't support iteration. We can't do anything about that
+            # so we just fall-back to the more general name for the parent object.
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
@@ -478,17 +486,30 @@ class _ReferrerGraphBuilder:
         self,
         target_objects: Iterable[Any],
         module_prefixes: Collection[str],
-        exclude_object_ids: Optional[Sequence[Any]] = None,
+        max_untracked_search_depth: int,
+        exclude_object_ids: Optional[Sequence[int]] = None,
     ):
+
+        excluded_id_set = {id(self), id(self.__dict__), id(target_objects)} | set(
+            exclude_object_ids
+        )
         self._target_objects = target_objects
+        self._untracked_objects_referrers = self._get_untracked_object_referrers(
+            target_objects,
+            excluded_id_set=excluded_id_set,
+            max_depth=max_untracked_search_depth,
+        )
         # Note: when we create the name finders is important because some implementations
         # start to track the objects that are in the environment when they are created.
         self._name_finders = _get_name_finders(module_prefixes)
         # Exclude the builder and its attributes from the referrer name finders, since we
         # store a reference to the target objects. Also exclude the target objects container.
+        # Also exclude the untracked object referrers dict and the lists it contains.
+        untracked_exclusions = {id(self._untracked_objects_referrers)}
+        for referrers in self._untracked_objects_referrers.values():
+            untracked_exclusions.add(id(referrers))
         self._referrer_name_finders = _get_referrer_name_finders(
-            exclude_object_ids=[id(self), id(self.__dict__), id(target_objects)]
-            + list(exclude_object_ids)
+            excluded_id_set | untracked_exclusions
         )
 
     def build(self, max_depth: Optional[int]) -> ReferrerGraph:
@@ -508,7 +529,7 @@ class _ReferrerGraphBuilder:
             if max_depth is None or depth < max_depth:
                 # For each referrer of the target object, find the name(s) of the referrer and
                 # add an edge to the graph for each
-                for referrer_object in gc.get_referrers(target_object):
+                for referrer_object in self._get_referrers(target_object):
                     referrer_id = id(referrer_object)
                     seen = referrer_id in seen_ids
                     referrer_nodes = self._get_referrer_nodes(
@@ -534,6 +555,12 @@ class _ReferrerGraphBuilder:
                 graph.add_edge(target_graph_node, non_referrer_graph_node)
 
         return _ReferrerGraph(graph)
+
+    def _get_referrers(self, target_object: Any) -> Iterable[Any]:
+        if gc.is_tracked(target_object):
+            return gc.get_referrers(target_object)
+        else:
+            return self._untracked_objects_referrers.get(id(target_object), [])
 
     def _get_initial_target_node(
         self, target_object: Any
@@ -576,6 +603,109 @@ class _ReferrerGraphBuilder:
                 )
         return nodes
 
+    def _get_untracked_object_referrers(
+        self,
+        target_objects: Iterable[Any],
+        excluded_id_set: Set[int],
+        max_depth: int,
+    ) -> Mapping[id, List[Any]]:
+        """
+        Builds a mapping of object IDs to referrers for objects that are not tracked by the
+        garbage collector.
+        """
+        return_dict: Dict[int, List[Any]] = collections.defaultdict(list)
+
+        do_not_visit = copy(excluded_id_set)
+        do_not_visit.add(id(return_dict))
+
+        untracked_target_object_ids = {
+            id(obj) for obj in target_objects if not gc.is_tracked(obj)
+        }
+
+        # Look through the referents of all locals and globals to try and find
+        # untracked objects.
+        if len(untracked_target_object_ids) > 0:
+
+            roots = self._get_roots_from_locals_and_globals(do_not_visit)
+            # Make sure we don't visit the roots list, or very strange things will happen!
+            do_not_visit.add(id(roots))
+
+            for root in roots:
+                untracked_stack = collections.deque()
+                do_not_visit.add(id(untracked_stack))
+                self._populate_untracked_object_referrers(
+                    obj=root,
+                    do_not_visit=do_not_visit,
+                    untracked_object_referrers=return_dict,
+                    untracked_target_object_ids=untracked_target_object_ids,
+                    untracked_stack=untracked_stack,
+                    depth=0,
+                    max_depth=max_depth,
+                )
+
+        return return_dict
+
+    def _populate_untracked_object_referrers(
+        self,
+        obj: Any,
+        do_not_visit: Set[int],
+        untracked_object_referrers: Dict[int, List],
+        untracked_target_object_ids: Set[int],
+        untracked_stack: Deque[Any],
+        depth: int,
+        max_depth: int,
+    ):
+        # This method is pretty horrible. It can maybe be made less complex.
+        obj_id = id(obj)
+        if inspect.isframe(obj) or obj_id in do_not_visit or depth >= max_depth:
+            return
+        else:
+            do_not_visit.add(obj_id)
+            for referent in gc.get_referents(obj):
+                referent_id = id(referent)
+                is_tracked = gc.is_tracked(referent)
+                pop = False
+                # Push untracked objects or objects that are referred to by untracked objects
+                # onto the stack (though I'm not sure if this is possible).
+                if (not is_tracked) or len(untracked_stack) > 0:
+                    untracked_stack.append(obj)
+                    pop = True
+                # If we find one of the target objects, add the current object to the
+                # referrers list for the target object. We also walk back up the untracked
+                # object stack and add any other untracked objects that refer indirectly
+                # to the target object.
+                if referent_id in untracked_target_object_ids:
+                    id_to_add = referent_id
+                    for untracked_obj in reversed(untracked_stack):
+                        untracked_object_referrers[id_to_add].append(untracked_obj)
+                        id_to_add = id(untracked_obj)
+                # Recurse into the referent. The exit condition is when we find a referent
+                # that is in the do_not_visit set, or when we reach the maximum depth.
+                self._populate_untracked_object_referrers(
+                    obj=referent,
+                    do_not_visit=do_not_visit,
+                    untracked_object_referrers=untracked_object_referrers,
+                    untracked_target_object_ids=untracked_target_object_ids,
+                    untracked_stack=untracked_stack,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+                if pop:
+                    untracked_stack.pop()
+
+    def _get_roots_from_locals_and_globals(self, do_not_visit: Set[int]):
+        roots = []
+        for thread_frames in _get_frames_for_all_threads().values():
+            for frame in thread_frames:
+                # Exclude the locals and globals themselves from the search.
+                do_not_visit.add(id(frame.f_locals))
+                do_not_visit.add(id(frame.f_globals))
+                for var_value in chain(
+                    frame.f_locals.values(), frame.f_globals.values()
+                ):
+                    roots.append(var_value)
+        return roots
+
 
 @dataclass(frozen=True)
 class _GlobalVariable:
@@ -595,9 +725,9 @@ def _get_name_finders(module_prefixes: Collection[str]) -> Sequence[NameFinder]:
 
 
 def _get_referrer_name_finders(
-    exclude_object_ids: Sequence[int],
+    excluded_id_set: Set[int],
 ) -> Sequence[ReferrerNameFinder]:
-    return [ObjectNameFinder(exclude_object_ids=exclude_object_ids)]
+    return [ObjectNameFinder(excluded_id_set=excluded_id_set)]
 
 
 def _get_global_vars() -> Set[_GlobalVariable]:

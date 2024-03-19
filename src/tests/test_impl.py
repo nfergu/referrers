@@ -392,7 +392,6 @@ class TestGetReferrerGraph:
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
         nx_graph = graph.to_networkx()
-        print(graph)
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1"] == [root.name for root in roots]
         bfs_names = [
@@ -414,7 +413,6 @@ class TestGetReferrerGraph:
     def test_graph_builder_excluded(self):
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference, module_prefixes=["tests"])
-        print(graph)
         for node in graph.to_networkx().nodes:
             assert "_ReferrerGraphBuilder" not in node.name
 
@@ -435,30 +433,56 @@ class TestGetReferrerGraph:
         link_nodes = [node for node in nx_graph.nodes if "Link (object)" in node.name]
         assert len(instance_attribute_nodes) + len(link_nodes) == 12
 
-    def test_untracked_object_as_local(self):
-        # In this case "hello" is not tracked by the garbage collector, and A.__dict__
-        # is not tracked either (although this is CPython-specific I think). So we won't
-        # find any referrers for "hello".
-        a = A("hello")
-        assert not gc.is_tracked(a.instance_var)
-        graph = referrers.get_referrer_graph(a.instance_var, module_prefixes=["tests"])
-        assert a.instance_var == "hello"
+    def test_untracked_container_object(self):
+        # In this case the_dict is not tracked by the garbage collector because it
+        # is a container containing only immutable objects (this is a CPython implementation
+        # detail I think). However, the implementation should still be able to find the
+        # reference to the_dict in the graph as a local variable.
+        the_dict = {"a": "hello"}
+        assert not gc.is_tracked(the_dict)
+        graph = referrers.get_referrer_graph(the_dict, module_prefixes=["tests"])
+        assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            ".instance_var" in node_name for node_name in node_names
-        ), f"Did not find .instance_var in graph {graph}"
+            "test_untracked_container_object.the_dict" in node_name
+            for node_name in node_names
+        ), graph
 
-    def test_untracked_object_referred_to_from_local(self):
-        # In this case we have a tracked object (ref: my_dict), which refers to an untracked
-        # object (ref: a).
-        a = A("hello")
-        my_dict = {"a": a}
-        assert not gc.is_tracked(a.instance_var)
-        assert gc.is_tracked(my_dict)
-        graph = referrers.get_referrer_graph(a.instance_var, module_prefixes=["tests"])
-        assert a.instance_var == "hello"
-        assert my_dict["a"] is a
+    def test_untracked_object_within_container(self):
+        # In this case "hello" is not tracked by the garbage collector and the_dict
+        # is not tracked because it is a container containing only immutable objects.
+        # However, the implementation should still be able to find the reference to "hello"
+        # in the graph because it treats untracked objects as a special case, and searches
+        # for them in the referrents of locals and globals.
+        the_dict = {"a": "hello"}
+        assert not gc.is_tracked(the_dict)
+        assert not gc.is_tracked(the_dict["a"])
+        graph = referrers.get_referrer_graph(the_dict["a"], module_prefixes=["tests"])
+        print(graph)
+        assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            ".instance_var" in node_name for node_name in node_names
-        ), f"Did not find .instance_var in graph {graph}"
+            "test_untracked_object_within_container.the_dict" in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_untracked_object_within_object(self):
+        # In this case "hello" is not tracked by the garbage collector but the object that
+        # references it is. However, the object's dict is not tracked, so the implementation
+        # needs to search the object's referrents to find the reference to "hello".
+        the_obj = A("hello")
+        assert gc.is_tracked(the_obj)
+        assert not gc.is_tracked(the_obj.__dict__)
+        assert not gc.is_tracked(the_obj.instance_var)
+        graph = referrers.get_referrer_graph(
+            the_obj.instance_var, module_prefixes=["tests"]
+        )
+        print(graph)
+        assert the_obj.instance_var == "hello"
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "test_untracked_object_within_object.the_obj" in node_name
+            for node_name in node_names
+        ), str(graph)
+        assert any("A (object)" in node_name for node_name in node_names), str(graph)
+        assert any(".instance_var" in node_name for node_name in node_names), str(graph)
