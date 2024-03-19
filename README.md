@@ -9,7 +9,7 @@ of references (including indirect references).
 Use the `referrers.get_referrer_graph` function to get a graph of references to a
 specific object.
 
-For example, to find references to an instance of `ChildClass:
+For example, to find references to an instance of `ChildClass`:
 
 ```python
 import dataclasses
