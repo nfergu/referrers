@@ -120,6 +120,7 @@ and may not work well in all cases.
 
 ## TODO
 
+* Check what Python versions this actually works with
 * Run MyPy and PyLint and fix any issues
 * Add more test cases
 * Try to make handling of untracked objects more robust and faster
