@@ -639,7 +639,7 @@ class _ReferrerGraphBuilder:
     def _get_initial_target_node(
         self, target_object: Any
     ) -> Tuple[ReferrerGraphNode, Any, int]:
-        name = type(target_object).__name__
+        name = f"{type(target_object).__name__} instance"
         return (
             ReferrerGraphNode(name=name, id=id(target_object), type="object"),
             target_object,

@@ -391,13 +391,13 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(the_reference)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["TestClass1"] == [root.name for root in roots]
+        assert ["TestClass1 instance"] == [root.name for root in roots]
         bfs_names = [
             (edge[0].name, edge[1].name)
             for edge in bfs_edges(nx_graph, source=_one(roots))
         ]
         assert bfs_names == [
-            ("TestClass1", "test_get_referrer_graph.the_reference (local)"),
+            ("TestClass1 instance", "test_get_referrer_graph.the_reference (local)"),
         ]
 
     def test_get_referrer_graph_for_list(self):
@@ -407,20 +407,22 @@ class TestGetReferrerGraph:
         print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert {"TestClass1", "TestClass2"} == set(root.name for root in roots)
+        assert {"TestClass1 instance", "TestClass2 instance"} == set(
+            root.name for root in roots
+        )
         for root in roots:
             bfs_names = [
                 (edge[0].name, edge[1].name)
                 for edge in bfs_edges(nx_graph, source=root)
             ]
-            if root.name == "TestClass1":
+            if root.name == "TestClass1 instance":
                 assert bfs_names == [
                     (
-                        "TestClass1",
+                        "TestClass1 instance",
                         ".my_attribute (instance attribute)",
                     ),
                     (
-                        "TestClass1",
+                        "TestClass1 instance",
                         "test_get_referrer_graph_for_list.the_reference (local)",
                     ),
                     (
@@ -428,10 +430,10 @@ class TestGetReferrerGraph:
                         "TestClass2 (object)",
                     ),
                 ]
-            elif root.name == "TestClass2":
+            elif root.name == "TestClass2 instance":
                 assert bfs_names == [
                     (
-                        "TestClass2",
+                        "TestClass2 instance",
                         "test_get_referrer_graph_for_list.the_reference2 (local)",
                     )
                 ]
@@ -544,7 +546,7 @@ class TestGetReferrerGraph:
         )
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["int"] == [root.name for root in roots]
+        assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
             "tests.testing_modules.module1.module_variable (module variable)"
@@ -560,7 +562,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(178, search_for_untracked_objects=True)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["int"] == [root.name for root in roots]
+        assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
             "tests.testing_modules.module1.module_variable (module variable)"
@@ -578,7 +580,7 @@ class TestGetReferrerGraph:
         print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["int"] == [root.name for root in roots]
+        assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
             ".int_container_value (instance attribute)" in node_name
