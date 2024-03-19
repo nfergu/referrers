@@ -50,7 +50,7 @@ efficient, so should not be used in performance-critical code.
 ## Installation
 
 ```bash
-pip install git+https://github.com/nfergu/referrers.git
+pip3 install git+https://github.com/nfergu/referrers.git
 ```
 
 ## Integration with memory analysis tools
