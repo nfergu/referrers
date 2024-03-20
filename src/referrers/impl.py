@@ -24,6 +24,8 @@ from typing import (
 
 import networkx as nx
 
+_PACKAGE_PREFIX = "referrers."
+
 _TYPE_LOCAL = "local"
 _TYPE_GLOBAL = "global"
 _TYPE_OBJECT = "object"
@@ -269,7 +271,7 @@ class LocalVariableNameFinder(NameFinder):
                     frame_module = inspect.getmodule(frame)
                     # Exclude all frames from the referrers package.
                     if frame_module is None or (
-                        not frame_module.__name__.startswith("referrers")
+                        not frame_module.__name__.startswith(_PACKAGE_PREFIX)
                     ):
                         frame_names = self._get_frame_names(frame, target_object)
                         # Don't go any further down the stack for this thread if we've found some
@@ -549,8 +551,11 @@ class _ReferrerGraphBuilder:
             stack_frames = inspect.stack()
             for frame_info in stack_frames:
                 frame_module = inspect.getmodule(frame_info.frame).__name__
-                if not frame_module.startswith("referrers"):
-                    module_prefixes = [frame_module.split(".")[0]]
+                if not frame_module.startswith(_PACKAGE_PREFIX):
+                    # Use the top-level package of the calling code as the module prefix
+                    # (with a trailing dot). For example, if the calling code is in a module
+                    # called my_module.do_thing, the module prefix would be "my_module.".
+                    module_prefixes = [f"{frame_module.split('.')[0]}."]
                     break
         if not module_prefixes:
             raise ValueError(
