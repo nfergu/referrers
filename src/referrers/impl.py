@@ -20,6 +20,9 @@ from typing import (
     Set,
     Tuple,
     Dict,
+    Callable,
+    TypeVar,
+    Hashable,
 )
 
 import networkx as nx
@@ -288,20 +291,12 @@ class LocalVariableNameFinder(NameFinder):
         :param target_object: The object to search for.
         :return: A set of local_names of the target object in the frame.
         """
-        attempt = 0
-        while attempt <= 10:
-            attempt += 1
-            try:
-                return {
-                    f"{frame.f_code.co_name}.{var_name} ({_TYPE_LOCAL})"
-                    for var_name, var_value in frame.f_locals.items()
-                    if var_value is target_object
-                }
-            except RuntimeError:
-                # The dict may change size during iteration, so we catch this exception and
-                # try again
-                pass
-        return set()
+        return _filter_container(
+            frame.f_locals,
+            extractor_func=lambda x: x.items(),
+            filter_func=lambda x: x[1] is target_object,
+            selector_func=lambda x: f"{frame.f_code.co_name}.{x[0]} ({_TYPE_LOCAL})",
+        )
 
     def get_type(self) -> str:
         return _TYPE_LOCAL
@@ -342,24 +337,20 @@ class GlobalVariableNameFinder(NameFinder):
         :param target_object: The object to search for.
         :return: A set of local_names of the target object in the frame.
         """
-        attempt = 0
-        while attempt <= 10:
-            attempt += 1
-            try:
-                names = set()
-                for var_name, var_value in frame.f_globals.items():
-                    if var_value is target_object:
-                        module = inspect.getmodule(var_value)
-                        if module:
-                            names.add(f"{module.__name__}.{var_name} ({_TYPE_GLOBAL})")
-                        else:
-                            names.add(f"{var_name} ({_TYPE_GLOBAL})")
-                return names
-            except RuntimeError:
-                # The dict may change size during iteration, so we catch this exception and
-                # try again
-                pass
-        return set()
+        return _filter_container(
+            frame.f_globals,
+            extractor_func=lambda x: x.items(),
+            filter_func=lambda x: x[1] is target_object,
+            selector_func=self._selector_func,
+        )
+
+    def _selector_func(self, item: Tuple[str, Any]) -> str:
+        var_name, var_value = item
+        module = inspect.getmodule(var_value)
+        if module:
+            return f"{module.__name__}.{var_name} ({_TYPE_GLOBAL})"
+        else:
+            return f"{var_name} ({_TYPE_GLOBAL})"
 
     def get_type(self) -> str:
         return _TYPE_GLOBAL
@@ -445,27 +436,29 @@ class ObjectNameFinder(ReferrerNameFinder):
             if isinstance(
                 parent_object, (collections.abc.Mapping, collections.abc.MutableMapping)
             ):
-                matching_keys = {
-                    key
-                    for key, value in parent_object.items()
-                    if value is target_object
-                }
-                for key in matching_keys:
-                    names.add(f"{type(parent_object).__name__}[{key}]")
+                names.update(
+                    _filter_container(
+                        parent_object,
+                        extractor_func=lambda x: x.items(),
+                        filter_func=lambda x: x[1] is target_object,
+                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                    )
+                )
             elif isinstance(
                 parent_object,
                 (collections.abc.Sequence, collections.abc.MutableSequence),
             ):
-                matching_indices = {
-                    index
-                    for index, value in enumerate(parent_object)
-                    if value is target_object
-                }
-                for index in matching_indices:
-                    names.add(f"{type(parent_object).__name__}[{index}]")
+                names.update(
+                    _filter_container(
+                        parent_object,
+                        extractor_func=lambda x: enumerate(x),
+                        filter_func=lambda x: x[1] is target_object,
+                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                    )
+                )
         except Exception:
-            # Certain containers don't support iteration. We can't do anything about that
-            # so we just fall-back to the more general name for the parent object.
+            # Certain containers don't support iteration. We can't do anything about that,
+            # so we just fall back to the more general name for the parent object.
             # The catch-all exception isn't ideal, but we don't know what exceptions
             # the container types might raise.
             pass
@@ -866,3 +859,41 @@ def _get_frames_for_all_threads() -> Mapping[str, Iterable[FrameType]]:
             [frame for frame, _ in traceback.walk_stack(top_frame)]
         )
     return return_dict
+
+
+_T = TypeVar("_T")
+_V = TypeVar("_V", bound=Hashable)
+
+
+def _filter_container(
+    container: Any,
+    extractor_func: Callable[[Any], Iterable[_T]],
+    filter_func: Callable[[_T], bool],
+    selector_func: Callable,
+) -> Set[_V]:
+    """
+    Filters a container using the given functions.
+
+    This function is robust to containers being modified while we're iterating over them.
+    If a RuntimeError is raised, we make a copy of the container and try again.
+
+    :param container: The container to filter.
+    :param extractor_func: A function that creates an iterable from the container
+    :param filter_func: A function that filters items from the iterable
+    :param selector_func: A function that selects items from the iterable
+    :return: A set of selected items.
+    """
+    try:
+        return {
+            selector_func(item)
+            for item in extractor_func(container)
+            if filter_func(item)
+        }
+    except RuntimeError:
+        # If we get a RuntimeError, it's likely that the iterable is being modified while
+        # we're iterating over it. In this case we make a copy of the container and try again.
+        return {
+            selector_func(item)
+            for item in extractor_func(copy(container))
+            if filter_func(item)
+        }
