@@ -409,25 +409,42 @@ class ObjectNameFinder(ReferrerNameFinder):
 
     def _get_instance_attribute_names(self, target_object: Any, parent_object: Any):
         names = set()
-        grandparents = gc.get_referrers(parent_object)
-        # If the parent has referrers, we need to check if any of them are classes with
-        # instance attributes that refer to the target object (via their __dict__).
-        if grandparents:
-            for grandparent in grandparents:
-                # If the grandparent is a class, check if the parent is the class's dict.
-                # If so the grandparent is referring to the target object via an instance
-                # attribute. This affects the name that we give the target.
-                if (
-                    hasattr(grandparent, "__dict__")
-                    and grandparent.__dict__ is parent_object
-                ):
-                    matching_keys = {
-                        key
-                        for key, value in parent_object.items()
-                        if value is target_object
-                    }
-                    for key in matching_keys:
-                        names.add(f".{key} (instance attribute)")
+        # The behaviour here is different between Python versions <=3.10, and > 3.10.
+        # In versions <= 3.10, the parent of an object is a dict, which matches the
+        # __dict__ attribute of the grandparent object (which is the actual referring object).
+        # In versions > 3.10, the parent of an object is the referring object itself.
+        if hasattr(parent_object, "__dict__"):
+            # This is the logic for Python > 3.10
+            matching_keys = {
+                key
+                for key, value in parent_object.__dict__.items()
+                if value is target_object
+            }
+            for key in matching_keys:
+                names.add(f"{type(parent_object).__name__}.{key} (instance attribute)")
+        else:
+            # This is the logic for Python <= 3.10
+            grandparents = gc.get_referrers(parent_object)
+            # If the parent has referrers, we need to check if any of them are classes with
+            # instance attributes that refer to the target object (via their __dict__).
+            if grandparents:
+                for grandparent in grandparents:
+                    # If the grandparent is a class, check if the parent is the class's dict.
+                    # If so the grandparent is referring to the target object via an instance
+                    # attribute. This affects the name that we give the target.
+                    if (
+                        hasattr(grandparent, "__dict__")
+                        and grandparent.__dict__ is parent_object
+                    ):
+                        matching_keys = {
+                            key
+                            for key, value in parent_object.items()
+                            if value is target_object
+                        }
+                        for key in matching_keys:
+                            names.add(
+                                f"{type(grandparent).__name__}.{key} (instance attribute)"
+                            )
         return names
 
     def _get_container_names(self, target_object: Any, parent_object: Any) -> Set[str]:
