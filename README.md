@@ -34,11 +34,13 @@ Will output something like:
 
 ```plaintext
 ╙── ChildClass instance (id=4355177920)
-    ├─╼ .instance_attribute (instance attribute) (id=4357186944)
+    ├─╼ ContainerClass.instance_attribute (instance attribute) (id=4357186944)
     │   └─╼ ContainerClass (object) (id=4355171584)
     │       └─╼ my_function.container_variable (local) (id=4355171584)
     └─╼ my_function.child_variable (local) (id=4355177920)
 ```
+
+Although the precise output will vary according to the Python version used.
 
 In this case the instance of `ChildClass` that is passed to `referrers.get_referrer_graph`
 is referenced directly by the `child_variable` local variable, and also indirectly
