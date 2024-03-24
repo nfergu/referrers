@@ -27,6 +27,9 @@ referrer_graph = referrers.get_referrer_graph(my_variable)
 print(referrer_graph)
 ```
 
+The `get_referrer_graph_for_list` function can bve used to get a single graph
+for multiple objects. 
+
 ## Example
 
 In this example we find all references to a instance of `ChildClass`:
@@ -89,7 +92,10 @@ The graph produced by `get_referrer_graph` can be converted to a NetworkX graph 
 `referrers.to_networkx_graph`. This can be useful for visualizing the graph, or for
 performing more complex analysis.
 
-For example, to visualize a graph of references to an object using [NetworkX](https://networkx.org/) and [Matplotlib](https://matplotlib.org/):
+The NetworkX consists of nodes of type `ReferrerGraphNode`.
+
+For example, to visualize a graph of references to an object using [NetworkX](https://networkx.org/)
+and [Matplotlib](https://matplotlib.org/):
 
 ```python
 import matplotlib.pyplot as plt
@@ -112,6 +118,8 @@ def my_function():
         with_labels=True,
     )
     plt.show()
+
+my_function()
 ```
 
 ## Untracked Objects
