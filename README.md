@@ -5,7 +5,7 @@ a reference to this object?"**, which is useful for debugging memory leaks and o
 issues. It tries to assign a meaningful name to each reference to an object and
 returns a graph of referrers (including indirect referrers).
 
-As a simple example, here is the graph of referrers for an instance of a Python `list`:
+As a simple example, here is the graph of referrers to an instance of a Python `list`:
 
 ```plaintext
 ╙── list instance (id=4514970240)
@@ -30,10 +30,10 @@ pip3 install referrers
 
 ## Usage
 
-Use the `referrers.get_referrer_graph` function to get a graph of references
-to an object.
+Use the `referrers.get_referrer_graph` function to get a graph of referrers for
+an object.
 
-For example, to print all references to an object referenced by `my_variable`:
+For example, get the graph of referrers for the object referenced by `my_variable`:
 
 ```python
 import referrers
@@ -47,7 +47,7 @@ for multiple objects.
 
 ## Basic Example
 
-In this example we find all references to a instance of a `list`:
+In this example we find all referrers for an instance of `list`:
 
 ```python
 import dataclasses
