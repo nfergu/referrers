@@ -158,7 +158,7 @@ prints the referrers of objects that have references in other threads.
 In the following example, there is a thread that prints the referrers of instances of `ChildClass`
 every second:
 
-```
+```python
 import dataclasses
 import threading
 from time import sleep
