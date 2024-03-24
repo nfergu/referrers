@@ -1,7 +1,7 @@
 # Referrers
 
-Referrers is a Python package that helps to answer the question "what is holding
-a reference to this object?", which is useful for debugging memory leaks and other
+Referrers is a Python package that helps to answer the question **"what is holding
+a reference to this object?"**, which is useful for debugging memory leaks and other
 issues. It tries to assign a meaningful name to each reference to an object and
 returns a graph of referrers (including indirect referrers).
 
