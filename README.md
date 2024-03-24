@@ -1,15 +1,37 @@
 # Referrers
 
-This library helps to answer the question "what is holding a reference to this object?",
-which is useful for debugging memory leaks and other issues.
+Referrers is a Python package that helps to answer the question "what is holding
+a reference to this object?", which is useful for debugging memory leaks and other
+issues.
 
 It tries to assign a meaningful name to each reference to an object and returns a graph
-of references (including indirect references).
+of referrers (including indirect referrers).
 
-Use the `referrers.get_referrer_graph` function to get a graph of references to a
-specific object.
+Note: this library is experimental and may not work in all cases. It is also not very
+efficient, so should not be used in performance-critical code.
 
-For example, to find references to an instance of `ChildClass`:
+## Installation
+
+Install using `pip`:
+
+```bash
+pip3 install referrers
+```
+## Usage
+
+Use the `referrers.get_referrer_graph` function to get a graph of references
+to an object.
+
+For example, to print all references to an object referenced by `my_variable`:
+
+```python
+referrer_graph = referrers.get_referrer_graph(my_variable)
+print(referrer_graph)
+```
+
+## Example
+
+In this example we find all references to a instance of `ChildClass`:
 
 ```python
 import dataclasses
@@ -30,7 +52,7 @@ def my_function():
 my_function()
 ```
 
-Will output something like:
+This will output something like:
 
 ```plaintext
 ╙── ChildClass instance (id=4355177920)
@@ -45,17 +67,6 @@ Although the precise output will vary according to the Python version used.
 In this case the instance of `ChildClass` that is passed to `referrers.get_referrer_graph`
 is referenced directly by the `child_variable` local variable, and also indirectly
 via `ContainerClass.instance_attribute`.
-
-Note: this library is experimental and may not work in all cases. It is also not very
-efficient, so should not be used in performance-critical code.
-
-## Installation
-
-Install using `pip` directly from Github:
-
-```bash
-pip3 install git+https://github.com/nfergu/referrers.git
-```
 
 ## Integration with memory analysis tools
 
@@ -80,7 +91,7 @@ The graph produced by `get_referrer_graph` can be converted to a NetworkX graph 
 `referrers.to_networkx_graph`. This can be useful for visualizing the graph, or for
 performing more complex analysis.
 
-For example, to visualize a graph of references to an object using Matplotlib and NetworkX:
+For example, to visualize a graph of references to an object using [NetworkX](https://networkx.org/) and [Matplotlib](https://matplotlib.org/):
 
 ```python
 import matplotlib.pyplot as plt
