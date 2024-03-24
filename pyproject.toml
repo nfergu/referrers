@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "referrers"
-version = "0.1.1"
+version = "0.2.1"
 description = "Finds the graph of referrers for a Python object"
 authors = ["Neil Ferguson"]
 readme = "README.md"
