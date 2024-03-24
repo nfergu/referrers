@@ -2,12 +2,10 @@
 
 Referrers is a Python package that helps to answer the question "what is holding
 a reference to this object?", which is useful for debugging memory leaks and other
-issues.
+issues. It tries to assign a meaningful name to each reference to an object and
+returns a graph of referrers (including indirect referrers).
 
-It tries to assign a meaningful name to each reference to an object and returns a graph
-of referrers (including indirect referrers).
-
-Note: this library is experimental and may not work in all cases. It is also not very
+Note: this package is experimental and may not work in all cases. It is also not very
 efficient, so should not be used in performance-critical code.
 
 ## Installation
