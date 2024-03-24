@@ -130,10 +130,3 @@ and may not work well in all cases.
   finding untracked objects. It should be possible to get rid of these, but I haven't
   managed to track them all down yet.
 * Finding untracked objects may be slow.
-
-## TODO
-
-* Add sampling for large graphs.
-* Run MyPy and PyLint and fix any issues.
-* Add more test cases. Maybe also some integration tests.
-* Try to make handling of untracked objects more robust and faster.
