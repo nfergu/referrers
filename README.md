@@ -47,7 +47,7 @@ for multiple objects.
 
 ## Basic Example
 
-In this example we find all references to a instance of `ChildClass`:
+In this example we find all references to a instance of a `list`:
 
 ```python
 import dataclasses
@@ -76,9 +76,9 @@ This will output something like:
 
 Although the precise output will vary according to the Python version used.
 
-In this case the instance of `ChildClass` that is passed to `referrers.get_referrer_graph`
-is referenced directly by the `child_variable` local variable, and also indirectly
-via `ContainerClass.instance_attribute`.
+In this case the list instance is referenced by a member variable of `ParentClass`, which
+is in turn referenced by a local variable in the `my_func` function. For the code to produce
+this graph see "Basic Example" below.
 
 ## Integration with memory analysis tools
 
