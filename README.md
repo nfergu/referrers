@@ -5,7 +5,7 @@ a reference to this object?"**, which is useful for debugging memory leaks and o
 issues. It tries to assign a meaningful name to each reference to an object and
 returns a graph of referrers (including indirect referrers).
 
-As a simple example, here is the graph of referrers to an instance of a Python `list`:
+As a simple example, here is the graph of referrers for an instance of a Python `list`:
 
 ```plaintext
 ╙── list instance (id=4514970240)
