@@ -5,8 +5,20 @@ a reference to this object?"**, which is useful for debugging memory leaks and o
 issues. It tries to assign a meaningful name to each reference to an object and
 returns a graph of referrers (including indirect referrers).
 
-Note: this package is experimental and may not work in all cases. It is also not very
-efficient, so should not be used in performance-critical code.
+As a simple example, here is the graph of referrers for an instance of a Python `list`:
+
+```plaintext
+╙── list instance (id=4514970240)
+    └─╼ ParentClass.member_variable (instance attribute) (id=4513308624)
+        └─╼ my_func.local_variable (local) (id=4513308624)
+```
+
+In this case the list instance is referenced by a member variable of `ParentClass`, which
+is in turn referenced by a local variable in the `my_func` function. For the code to produce
+this graph see "Basic Example" below.
+
+Note: this package is experimental and may not work in all cases. It may also be inefficient
+in certain cases, and should not be used in performance-critical code.
 
 ## Installation
 
@@ -33,37 +45,33 @@ print(referrer_graph)
 Alternatively, use the `get_referrer_graph_for_list` function to get a single graph
 for multiple objects.
 
-## Example
+## Basic Example
 
 In this example we find all references to a instance of `ChildClass`:
 
 ```python
 import dataclasses
+from typing import List
+
 import referrers
 
-class ChildClass:
-    pass
-
 @dataclasses.dataclass
-class ContainerClass:
-    instance_attribute: ChildClass
+class ParentClass:
+    member_variable: List
 
-def my_function():
-    child_variable = ChildClass()
-    container_variable = ContainerClass(child_variable)
-    print(referrers.get_referrer_graph(child_variable))
+def my_func():
+    local_variable = ParentClass([1, 2])
+    print(referrers.get_referrer_graph(local_variable.member_variable))
 
-my_function()
+my_func()
 ```
 
 This will output something like:
 
 ```plaintext
-╙── ChildClass instance (id=4355177920)
-    ├─╼ ContainerClass.instance_attribute (instance attribute) (id=4357186944)
-    │   └─╼ ContainerClass (object) (id=4355171584)
-    │       └─╼ my_function.container_variable (local) (id=4355171584)
-    └─╼ my_function.child_variable (local) (id=4355177920)
+╙── list instance (id=4514970240)
+    └─╼ ParentClass.member_variable (instance attribute) (id=4513308624)
+        └─╼ my_func.local_variable (local) (id=4513308624)
 ```
 
 Although the precise output will vary according to the Python version used.
@@ -141,6 +149,46 @@ and may not work well in all cases.
   finding untracked objects. It should be possible to get rid of these, but I haven't
   managed to track them all down yet.
 * Finding untracked objects may be slow.
+
+## Multi-threading
+
+Referrers works well with multiple threads. For example, you can have a separate thread that
+prints the referrers of objects that have references in other threads.
+
+In the following example, there is a thread that prints the referrers of instances of `ChildClass`
+every second:
+
+```
+import dataclasses
+import threading
+from time import sleep
+from pympler import muppy
+
+import referrers
+
+class ChildClass:
+    pass
+
+@dataclasses.dataclass
+class ContainerClass:
+    instance_attribute: ChildClass
+
+def print_referrers():
+    while True:
+        all_instances = [obj for obj in muppy.get_objects() if isinstance(obj, ChildClass)]
+        print(referrers.get_referrer_graph_for_list(all_instances))
+        sleep(1)
+
+printing_thread = threading.Thread(target=print_referrers, daemon=True)
+printing_thread.start()
+
+def my_function():
+    child_variable = ChildClass()
+    container_variable = ContainerClass(child_variable)
+    sleep(1000)
+
+my_function()
+```
 
 ## Source
 
