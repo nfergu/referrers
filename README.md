@@ -10,11 +10,12 @@ efficient, so should not be used in performance-critical code.
 
 ## Installation
 
-Install using `pip`:
+Install using pip:
 
 ```bash
 pip3 install referrers
 ```
+
 ## Usage
 
 Use the `referrers.get_referrer_graph` function to get a graph of references
@@ -23,6 +24,8 @@ to an object.
 For example, to print all references to an object referenced by `my_variable`:
 
 ```python
+import referrers
+
 referrer_graph = referrers.get_referrer_graph(my_variable)
 print(referrer_graph)
 ```
@@ -138,3 +141,7 @@ and may not work well in all cases.
   finding untracked objects. It should be possible to get rid of these, but I haven't
   managed to track them all down yet.
 * Finding untracked objects may be slow.
+
+## Source
+
+See [https://github.com/nfergu/referrers](https://github.com/nfergu/referrers) for the Github repo.
