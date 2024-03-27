@@ -576,7 +576,10 @@ class _ReferrerGraphBuilder:
             exclude_object_ids
         )
         self._target_objects = target_objects
-        self._untracked_objects_referrers = self._get_untracked_object_referrers(
+        (
+            self._untracked_objects_referrers,
+            extra_exclusions,
+        ) = self._get_untracked_object_referrers(
             target_objects,
             excluded_id_set=excluded_id_set,
             max_depth=max_untracked_search_depth,
@@ -587,12 +590,8 @@ class _ReferrerGraphBuilder:
         self._name_finders = _get_name_finders(module_prefixes)
         # Exclude the builder and its attributes from the referrer name finders, since we
         # store a reference to the target objects. Also exclude the target objects container.
-        # Also exclude the untracked object referrers dict and the lists it contains.
-        untracked_exclusions = {id(self._untracked_objects_referrers)}
-        for referrers in self._untracked_objects_referrers.values():
-            untracked_exclusions.add(id(referrers))
         self._referrer_name_finders = _get_referrer_name_finders(
-            excluded_id_set | untracked_exclusions
+            excluded_id_set | extra_exclusions
         )
 
     def build(self, max_depth: Optional[int]) -> ReferrerGraph:
@@ -698,12 +697,15 @@ class _ReferrerGraphBuilder:
         excluded_id_set: Set[int],
         max_depth: int,
         module_prefixes: Collection[str],
-    ) -> Mapping[id, List[Any]]:
+    ) -> Tuple[Mapping[id, List[Any]], Set[int]]:
         """
         Builds a mapping of object IDs to referrers for objects that are not tracked by the
-        garbage collector.
+        garbage collector, and returns this along with extra IDs to exclude.
         """
         return_dict: Dict[int, List[Any]] = collections.defaultdict(list)
+
+        extra_exclusions = set()
+        excluded_id_set.add(id(return_dict))
 
         do_not_visit = copy(excluded_id_set)
         do_not_visit.add(id(return_dict))
@@ -722,10 +724,14 @@ class _ReferrerGraphBuilder:
             )
             # Make sure we don't visit the roots list, or very strange things will happen!
             do_not_visit.add(id(roots))
+            # Also add the roots to the excluded set. It's not clear why this is necessary,
+            # but it seems to be.
+            extra_exclusions.add(id(roots))
 
             for root in roots:
                 untracked_stack = collections.deque()
                 do_not_visit.add(id(untracked_stack))
+                extra_exclusions.add(id(untracked_stack))
                 self._populate_untracked_object_referrers(
                     obj=root,
                     do_not_visit=do_not_visit,
@@ -736,7 +742,10 @@ class _ReferrerGraphBuilder:
                     max_depth=max_depth,
                 )
 
-        return return_dict
+        for value in return_dict.values():
+            extra_exclusions.add(id(value))
+
+        return return_dict, extra_exclusions
 
     def _populate_untracked_object_referrers(
         self,

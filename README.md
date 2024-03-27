@@ -47,7 +47,7 @@ for multiple objects.
 
 ## Basic Example
 
-In this example we find all referrers for an instance of `list`:
+In this example we find all referrers for an instance of a `list`:
 
 ```python
 import dataclasses
@@ -77,8 +77,7 @@ This will output something like:
 Although the precise output will vary according to the Python version used.
 
 In this case the list instance is referenced by a member variable of `ParentClass`, which
-is in turn referenced by a local variable in the `my_func` function. For the code to produce
-this graph see "Basic Example" below.
+is in turn referenced by a local variable in the `my_func` function.
 
 ## Integration with memory analysis tools
 
@@ -103,7 +102,8 @@ The graph produced by `get_referrer_graph` can be converted to a NetworkX graph 
 its `to_networkx` method. This can be useful for visualizing the graph, or for
 performing more complex analysis.
 
-The resulting NetworkX graph consists of nodes of type `ReferrerGraphNode`.
+The resulting NetworkX graph consists of nodes of type `ReferrerGraphNode`, with edges
+directed from objects to their referrers.
 
 For example, to visualize a graph of references to an object using [NetworkX](https://networkx.org/)
 and [Matplotlib](https://matplotlib.org/):
@@ -135,10 +135,44 @@ my_function()
 
 ## Untracked Objects
 
-By default, `get_referrer_graph` will only include objects that are tracked by the garbage
-collector. However, the `search_for_untracked_objects` flag can be set to `True` to also
-include objects that are not tracked by the garbage collector. This option is experimental
-and may not work well in all cases.
+By default, `get_referrer_graph` will raise an error if the object passed to it is not
+tracked by the garbage collector. In CPython, for example, immutable objects and some
+containers that contain only immutable objects (like dicts and tuples) are not tracked
+by the garbage collector.
+
+However, the `search_for_untracked_objects` flag can be set to `True` when calling
+`get_referrer_graph` to try to find referrers for objects are not tracked by the garbage
+collector. This option is experimental and may not work well in all cases.
+
+For example, here we find the referrers of an untracked object (a `dict` containing only
+immutable objects):
+
+```python
+import dataclasses
+import gc
+from typing import Dict
+
+import referrers
+
+@dataclasses.dataclass
+class ParentClass:
+    member_variable: Dict
+
+def my_func():
+    local_variable = ParentClass({"a": 1})
+    assert not gc.is_tracked(local_variable.member_variable)
+    print(referrers.get_referrer_graph(local_variable.member_variable, search_for_untracked_objects=True))
+
+my_func()
+```
+
+This will output something like:
+
+```plaintext
+╙── dict instance (id=4483928640)
+    └─╼ ParentClass.member_variable (instance attribute) (id=4482048576)
+        └─╼ my_func.local_variable (local) (id=4482048576)
+```
 
 ### Known limitations with untracked objects
 
@@ -146,8 +180,8 @@ and may not work well in all cases.
   parameter. If this is set too low, some untracked objects may be missing from the graph.
   Try setting this to a higher value if you think this is happening
 * Sometimes internal references (from within `referrers`) may be included in the graph when
-  finding untracked objects. It should be possible to get rid of these, but I haven't
-  managed to track them all down yet.
+  finding untracked objects. It should be possible to get rid of these, but I'm not sure if I've
+  found them all yet.
 * Finding untracked objects may be slow.
 
 ## Multi-threading
@@ -155,8 +189,9 @@ and may not work well in all cases.
 Referrers works well with multiple threads. For example, you can have a separate thread that
 prints the referrers of objects that have references in other threads.
 
-In the following example, there is a thread that prints the referrers of instances of `ChildClass`
-every second:
+In the following example, there is a thread that prints the referrers of all instances of
+`ChildClass` every second (using [Pympler](https://pympler.readthedocs.io/en/latest/) to find
+the instances):
 
 ```python
 import dataclasses
