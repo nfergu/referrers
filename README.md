@@ -5,17 +5,30 @@ a reference to this object?"**, which is useful for debugging memory leaks and o
 issues. It tries to assign a meaningful name to each reference to an object and
 returns a graph of referrers (including indirect referrers).
 
-As a simple example, here is the graph of referrers for an instance of a Python `list`:
+For example, this code:
 
-```plaintext
-╙── list instance (id=4514970240)
-    └─╼ ParentClass.member_variable (instance attribute) (id=4513308624)
-        └─╼ my_func.local_variable (local) (id=4513308624)
+```python
+import referrers
+
+def my_function():
+    a = [2, 4]
+    d = dict(a=a)
+    print(referrers.get_referrer_graph(a))
+
+my_function()
 ```
 
-In this case the list instance is referenced by a member variable of `ParentClass`, which
-is in turn referenced by a local variable in the `my_func` function. For the code to produce
-this graph see "Basic Example" below.
+Will produce output like:
+
+```plaintext
+╙── list instance (id=4346564736)
+    ├─╼ dict[a] (id=4347073728)
+    │   └─╼ my_function.d (local) (id=4347073728)
+    └─╼ my_function.a (local) (id=4346564736)
+```
+
+In this case the list instance is referenced directly by a local variable called `a`, and also
+via a dictionary, which is in turn referenced by a local variable called `d`.
 
 Note: this package is experimental and may not work in all cases. It may also be inefficient
 in certain cases, and should not be used in performance-critical code.
