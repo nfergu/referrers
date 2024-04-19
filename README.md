@@ -97,17 +97,30 @@ is in turn referenced by a local variable in the `my_func` function.
 This library can be used with other memory analysis tools to help identify the source
 of memory leaks.
 
-For example, to print the referrers of all lists using
-[Pympler](https://pympler.readthedocs.io/en/latest/) (warning: this may produce a lot of output!):
+For example, to print the referrers of the top 10 largest objects using 
+[Pympler](https://pympler.readthedocs.io/en/latest/):
 
 ```python
-import referrers
 from pympler import muppy
+import referrers
 
-all_dicts = [obj for obj in muppy.get_objects() if isinstance(obj, list)]
-for obj in all_dicts:
-    print(referrers.get_referrer_graph(obj))
+top_10_objects = (muppy.sort(muppy.get_objects()))[-10:]
+top_10_objects.reverse()
+
+for obj in top_10_objects:
+    print(
+        referrers.get_referrer_graph(
+            obj,
+            search_for_untracked_objects=True,
+            exclude_object_ids=[id(top_10_objects)],
+        )
+    )
+
 ```
+
+Note that this example sets the `search_for_untracked_objects` flag to `True` to try to find
+referrers for objects that are not tracked by the garbage collector. It also sets
+`exclude_object_ids` to exclude the `top_10_objects` variable from the graph.
 
 ## Integration with NetworkX
 
