@@ -122,6 +122,37 @@ Note that this example sets the `search_for_untracked_objects` flag to `True` to
 referrers for objects that are not tracked by the garbage collector. It also sets
 `exclude_object_ids` to exclude the `top_10_objects` variable from the graph.
 
+Here's how to find the referrers of all objects that have been created
+between two points in time:
+
+```python
+import referrers
+from pympler import summary, muppy
+
+o1 = muppy.get_objects()
+my_dict = {'a': [1]}
+o2 = muppy.get_objects()
+
+o1_ids = {id(obj) for obj in o1}
+o2_ids = {id(obj): obj for obj in o2}
+diff = [obj for obj_id, obj in o2_ids.items() if obj_id not in o1_ids]
+
+summary.print_(summary.get_diff(summary.summarize(o1), summary.summarize(o2)))
+
+for obj in diff:
+    print(
+        referrers.get_referrer_graph(
+            obj,
+            exclude_object_ids=[id(o1), id(o2), id(diff), id(o2_ids)],
+            search_for_untracked_objects=True,
+        )
+    )
+```
+
+This will print a summary of the objects that have been created between o1 and o2,
+as well as the variable names that reference these objects. This can be useful for finding
+memory leaks.
+
 ## Integration with NetworkX
 
 The graph produced by `get_referrer_graph` can be converted to a NetworkX graph using
