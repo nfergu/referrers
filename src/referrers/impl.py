@@ -31,6 +31,7 @@ import networkx as nx
 _PACKAGE_PREFIX = "referrers."
 
 _TYPE_LOCAL = "local"
+_TYPE_CLOSURE = "closure"
 _TYPE_GLOBAL = "global"
 _TYPE_OBJECT = "object"
 _TYPE_MODULE_VARIABLE = "module variable"
@@ -306,6 +307,25 @@ class LocalVariableNameFinder(NameFinder):
 
     def get_type(self) -> str:
         return _TYPE_LOCAL
+
+
+class ClosureVariableNameFinder(NameFinder):
+    def __init__(self):
+        self._closure_function_names: Dict[int, List[str]] = collections.defaultdict(
+            list
+        )
+        for var_value in gc.get_objects():
+            if hasattr(var_value, "__closure__") and var_value.__closure__:
+                for cell in var_value.__closure__:
+                    self._closure_function_names[id(cell.cell_contents)].append(
+                        str(var_value)
+                    )
+
+    def get_names(self, target_object: Any) -> Set[str]:
+        return set(self._closure_function_names.get(id(target_object), []))
+
+    def get_type(self) -> str:
+        return _TYPE_CLOSURE
 
 
 class GlobalVariableNameFinder(NameFinder):
@@ -851,6 +871,7 @@ def _get_name_finders(
     finders = [
         LocalVariableNameFinder(),
         GlobalVariableNameFinder(),
+        ClosureVariableNameFinder(),
     ]
     for module_prefix in module_prefixes:
         finders.append(ModuleLevelNameFinder(module_prefix))

@@ -3,7 +3,7 @@ import gc
 import sys
 from time import sleep
 import threading
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Callable
 
 import pytest
 from networkx import bfs_edges
@@ -14,6 +14,7 @@ from referrers.impl import (
     LocalVariableNameFinder,
     ModuleLevelNameFinder,
     ObjectNameFinder,
+    ClosureVariableNameFinder,
 )
 from tests.testing_modules.module2 import imported_module_variable
 
@@ -59,6 +60,17 @@ class TestClass2Container:
 def stack_frames_namer_assert_in_function(passed_ref: TestClass1, name: str):
     names = LocalVariableNameFinder().get_names(passed_ref)
     assert names == {name}
+
+
+def get_print_input_closure(input_val: TestClass1) -> Callable[[], None]:
+    def print_input():
+        print(input_val)
+
+    return print_input
+
+
+module_level_variable = TestClass1()
+module_level_closure = get_print_input_closure(module_level_variable)
 
 
 class TargetClass:
@@ -167,6 +179,29 @@ class TestLocalVariableNameFinder:
         }
         assert ref1 is ref2
         assert ref1 is not ref3
+
+
+class TestClosureFinder:
+    def test_find_closure(
+        self,
+    ):
+        the_obj = TestClass1()
+        closure = get_print_input_closure(the_obj)
+        names = ClosureVariableNameFinder().get_names(the_obj)
+        assert closure is not None
+        assert len(names) == 1
+        assert "function get_print_input_closure.<locals>.print_input" in next(
+            iter(names)
+        )
+
+    def test_find_module_level_closure(
+        self,
+    ):
+        names = ClosureVariableNameFinder().get_names(module_level_variable)
+        assert len(names) == 1
+        assert "function get_print_input_closure.<locals>.print_input" in next(
+            iter(names)
+        )
 
 
 class TestContainerNameFinder:
@@ -604,12 +639,42 @@ class TestGetReferrerGraph:
         # It defines a class called IntContainer with an instance attribute that references
         # 145.
         graph = referrers.get_referrer_graph(145, search_for_untracked_objects=True)
-        print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
             ".int_container_value (instance attribute)" in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_get_referrer_graph_for_closure(
+        self,
+    ):
+        the_obj = TestClass1()
+        closure = get_print_input_closure(the_obj)
+        graph = referrers.get_referrer_graph(the_obj)
+        assert closure is not None
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["TestClass1 instance"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        # The closure name should be in the graph
+        assert any(
+            "function get_print_input_closure.<locals>.print_input " in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_get_referrer_graph_for_module_level_closure(
+        self,
+    ):
+        graph = referrers.get_referrer_graph(module_level_variable)
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["TestClass1 instance"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        # The closure name should be in the graph
+        assert any(
+            "function get_print_input_closure.<locals>.print_input " in node_name
             for node_name in node_names
         ), str(graph)
