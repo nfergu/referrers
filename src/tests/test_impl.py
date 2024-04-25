@@ -190,8 +190,9 @@ class TestClosureFinder:
         names = ClosureVariableNameFinder().get_names(the_obj)
         assert closure is not None
         assert len(names) == 1, names
-        assert "function get_print_input_closure.<locals>.print_input" in next(
-            iter(names)
+        assert (
+            "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            in next(iter(names))
         )
         assert "input_val" in next(iter(names))
 
@@ -199,9 +200,14 @@ class TestClosureFinder:
         self,
     ):
         names = ClosureVariableNameFinder().get_names(module_level_variable)
-        assert len(names) == 1, names
-        assert "function get_print_input_closure.<locals>.print_input" in next(
-            iter(names)
+        assert any(
+            "get_print_input_closure.<locals>.print_input.input_val (closure)" in name
+            for name in names
+        )
+        assert any(
+            "TestClosureFinder.test_find_module_level_closure.module_level_variable (closure)"
+            in name
+            for name in names
         )
 
 
@@ -678,7 +684,8 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "function get_print_input_closure.<locals>.print_input " in node_name
+            "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            in node_name
             for node_name in node_names
         ), str(graph)
 
@@ -692,6 +699,7 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "function get_print_input_closure.<locals>.print_input " in node_name
+            "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            in node_name
             for node_name in node_names
         ), str(graph)

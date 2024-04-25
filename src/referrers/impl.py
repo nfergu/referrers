@@ -328,9 +328,11 @@ class ClosureVariableNameFinder(NameFinder):
                     # "Cell is empty" in some cases. it's not clear how to avoid this
                     # so we just skip these cases.
                     continue
-                for var_name, var_value in closure_vars.nonlocals.items():
+                for var_name, var_value in chain(
+                    closure_vars.nonlocals.items(), closure_vars.globals.items()
+                ):
                     self._closure_function_names[id(var_value)].append(
-                        f"{str(obj)}.{var_name} ({_TYPE_CLOSURE})"
+                        f"{obj.__qualname__}.{var_name} ({_TYPE_CLOSURE})"
                     )
 
     def get_names(self, target_object: Any) -> Set[str]:
