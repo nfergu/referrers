@@ -254,6 +254,38 @@ class NameFinder(ABC):
         pass
 
 
+class _InternalReferrer(ABC):
+    """
+    Interface for referrers that we have created internally (normally to wrap
+    other objects.
+
+    These objects have a special string representation.
+    """
+
+    @abstractmethod
+    def unpack(self):
+        """
+        Unpacks the referrer to the object that it wraps.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    @abstractmethod
+    def __str__(self):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+
+@dataclass
+class _ClosureDetails(_InternalReferrer):
+    function: Any
+    variable_name: str
+
+    def unpack(self):
+        return self.function
+
+    def __str__(self):
+        return f"{self.function.__qualname__}.{self.variable_name} ({_TYPE_CLOSURE})"
+
+
 class LocalVariableNameFinder(NameFinder):
     """
     Gets the names of local variables that refer to the target object, across the
@@ -307,39 +339,6 @@ class LocalVariableNameFinder(NameFinder):
 
     def get_type(self) -> str:
         return _TYPE_LOCAL
-
-
-class ClosureVariableNameFinder(NameFinder):
-    def __init__(self):
-        self._closure_function_names: Dict[int, List[str]] = collections.defaultdict(
-            list
-        )
-        for obj in gc.get_objects():
-            if inspect.isfunction(obj) or inspect.ismethod(obj):
-                try:
-                    closure_vars = inspect.getclosurevars(obj)
-                except TypeError:
-                    # It's not clear why, but some things that claim to be functions
-                    # return a TypeError with "is not a Python function" here, so we
-                    # just skip them.
-                    continue
-                except ValueError:
-                    # The inspect.getclosurevars fuction raises a ValueError with
-                    # "Cell is empty" in some cases. it's not clear how to avoid this
-                    # so we just skip these cases.
-                    continue
-                for var_name, var_value in chain(
-                    closure_vars.nonlocals.items(), closure_vars.globals.items()
-                ):
-                    self._closure_function_names[id(var_value)].append(
-                        f"{obj.__qualname__}.{var_name} ({_TYPE_CLOSURE})"
-                    )
-
-    def get_names(self, target_object: Any) -> Set[str]:
-        return set(self._closure_function_names.get(id(target_object), []))
-
-    def get_type(self) -> str:
-        return _TYPE_CLOSURE
 
 
 class GlobalVariableNameFinder(NameFinder):
@@ -437,15 +436,20 @@ class ObjectNameFinder(ReferrerNameFinder):
         if id(parent_object) in self._excluded_id_set:
             return set()
         else:
-            instance_attribute_names = self._get_instance_attribute_names(
-                target_object, parent_object
-            )
-            # If the parent object contains instance attributes that refer to the target object,
-            # return these. Otherwise, return a more general name for the parent object.
-            if instance_attribute_names:
-                return instance_attribute_names
+            # Deal with internal objects as a special case. These generally have a nice
+            # string representation that we can use.
+            if isinstance(parent_object, _InternalReferrer):
+                return {str(parent_object)}
             else:
-                return self._get_container_names(target_object, parent_object)
+                instance_attribute_names = self._get_instance_attribute_names(
+                    target_object, parent_object
+                )
+                # If the parent object contains instance attributes that refer to the target object,
+                # return these. Otherwise, return a more general name for the parent object.
+                if instance_attribute_names:
+                    return instance_attribute_names
+                else:
+                    return self._get_container_names(target_object, parent_object)
 
     def _get_instance_attribute_names(self, target_object: Any, parent_object: Any):
         names = set()
@@ -616,9 +620,13 @@ class _ReferrerGraphBuilder:
                 "Could not determine the top-level package of the calling code. "
                 "Please specify the module_prefixes parameter to set this explicitly."
             )
-        excluded_id_set = {id(self), id(self.__dict__), id(target_objects)} | set(
-            exclude_object_ids
-        )
+        self._id_to_enclosing_closure = self._get_closure_functions()
+        excluded_id_set = {
+            id(self),
+            id(self.__dict__),
+            id(target_objects),
+            id(self._id_to_enclosing_closure),
+        } | set(exclude_object_ids)
         self._target_objects = target_objects
         (
             self._untracked_objects_referrers,
@@ -653,6 +661,13 @@ class _ReferrerGraphBuilder:
             target_graph_node, target_object, depth = stack.pop()
 
             if max_depth is None or depth < max_depth:
+
+                # For each non-referrer name pointing to the target object, add an edge to
+                # the graph. Also process any additional referrers that are returned.
+                non_referrer_nodes = self._get_non_referrer_nodes(target_object)
+                for non_referrer_graph_node in non_referrer_nodes:
+                    graph.add_edge(target_graph_node, non_referrer_graph_node)
+
                 # For each referrer of the target object, find the name(s) of the referrer and
                 # add an edge to the graph for each
                 for referrer_object in self._get_referrers(target_object):
@@ -675,20 +690,19 @@ class _ReferrerGraphBuilder:
                                     (referrer_graph_node, referrer_object, depth + 1)
                                 )
 
-            # For each non-referrer name pointing to the target object, add an edge to
-            # the graph.
-            non_referrer_nodes = self._get_non_referrer_nodes(target_object)
-            for non_referrer_graph_node in non_referrer_nodes:
-                graph.add_edge(target_graph_node, non_referrer_graph_node)
-
         return _ReferrerGraph(graph)
 
     def _is_excluded(self, obj: Any) -> bool:
         # We exclude these objects because anything referenced by them should be picked-up
         # elsewhere (locals global etc), and excluding them speeds things up a lot.
+        # We don't want to exclude closures, but they are wrapped in a _ClosureDetails object
+        # so they won't be excluded.
         return inspect.isframe(obj) or inspect.isroutine(obj) or inspect.ismodule(obj)
 
     def _get_referrers(self, target_object: Any) -> Iterable[Any]:
+        # If this is an internal object, we need to unpack it to get the real object.
+        if isinstance(target_object, _InternalReferrer):
+            target_object = target_object.unpack()
         # This might be empty if the object is not tracked. However, in some cases untracked
         # objects have referrers, so we need to eliminate duplicates.
         refs = gc.get_referrers(target_object)
@@ -698,6 +712,10 @@ class _ReferrerGraphBuilder:
         ):
             if id(untracked_referrer) not in ref_ids:
                 refs.append(untracked_referrer)
+        closures = self._id_to_enclosing_closure.get(id(target_object), [])
+        for closure in closures:
+            if id(closure) not in ref_ids:
+                refs.append(closure)
         return refs
 
     def _get_initial_target_node(
@@ -729,12 +747,11 @@ class _ReferrerGraphBuilder:
     def _get_non_referrer_nodes(self, target_object: Any) -> Set[ReferrerGraphNode]:
         nodes = set()
         for finder in self._name_finders:
-            for name in finder.get_names(target_object):
+            names = finder.get_names(target_object)
+            # We just use the target object ID as the object ID as we don't have anything else
+            # (this is maybe a bit weird?).
+            for name in names:
                 nodes.add(
-                    # We use the target object's ID as the ID for the node, because we don't
-                    # have a different unique ID for the reference name. However, this is
-                    # fine because both the name and ID (and type) are used to uniquely
-                    # identify the node.
                     ReferrerGraphNode(
                         name=name, id=id(target_object), type=finder.get_type()
                     )
@@ -877,6 +894,38 @@ class _ReferrerGraphBuilder:
     def _matches_prefixes(self, module_name: str, module_prefixes: Collection[str]):
         return any(module_name.startswith(prefix) for prefix in module_prefixes)
 
+    def _get_closure_functions(
+        self,
+    ) -> Dict[int, List[_ClosureDetails]]:
+        id_to_enclosing_closure: Dict[
+            int, List[_ClosureDetails]
+        ] = collections.defaultdict(list)
+        all_closure_ids = set()
+        for possible_function in gc.get_objects():
+            if inspect.isfunction(possible_function) or inspect.ismethod(
+                possible_function
+            ):
+                try:
+                    closure_vars = inspect.getclosurevars(possible_function)
+                except TypeError:
+                    # It's not clear why, but some things that claim to be functions
+                    # return a TypeError with "is not a Python function" here, so we
+                    # just skip them.
+                    continue
+                except ValueError:
+                    # The inspect.getclosurevars function raises a ValueError with
+                    # "Cell is empty" in some cases. it's not clear how to avoid this, so
+                    # we just skip these cases.
+                    continue
+                for var_name, var_value in chain(
+                    closure_vars.nonlocals.items(), closure_vars.globals.items()
+                ):
+                    id_to_enclosing_closure[id(var_value)].append(
+                        _ClosureDetails(possible_function, var_name)
+                    )
+                    all_closure_ids.add(id(possible_function))
+        return id_to_enclosing_closure
+
 
 @dataclass(frozen=True)
 class _GlobalVariable:
@@ -891,7 +940,6 @@ def _get_name_finders(
     finders = [
         LocalVariableNameFinder(),
         GlobalVariableNameFinder(),
-        ClosureVariableNameFinder(),
     ]
     for module_prefix in module_prefixes:
         finders.append(ModuleLevelNameFinder(module_prefix))

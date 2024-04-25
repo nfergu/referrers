@@ -14,7 +14,6 @@ from referrers.impl import (
     LocalVariableNameFinder,
     ModuleLevelNameFinder,
     ObjectNameFinder,
-    ClosureVariableNameFinder,
 )
 from tests.testing_modules.module2 import imported_module_variable
 
@@ -181,37 +180,7 @@ class TestLocalVariableNameFinder:
         assert ref1 is not ref3
 
 
-class TestClosureFinder:
-    def test_find_closure(
-        self,
-    ):
-        the_obj = TestClass1()
-        closure = get_print_input_closure(the_obj)
-        names = ClosureVariableNameFinder().get_names(the_obj)
-        assert closure is not None
-        assert len(names) == 1, names
-        assert (
-            "get_print_input_closure.<locals>.print_input.input_val (closure)"
-            in next(iter(names))
-        )
-        assert "input_val" in next(iter(names))
-
-    def test_find_module_level_closure(
-        self,
-    ):
-        names = ClosureVariableNameFinder().get_names(module_level_variable)
-        assert any(
-            "get_print_input_closure.<locals>.print_input.input_val (closure)" in name
-            for name in names
-        )
-        assert any(
-            "TestClosureFinder.test_find_module_level_closure.module_level_variable (closure)"
-            in name
-            for name in names
-        )
-
-
-class TestContainerNameFinder:
+class TestObjectNameFinder:
     def test_instance_attribute(self):
         local_ref = TestClass1()
         containing_class = TestClass2(local_ref)
@@ -447,6 +416,11 @@ class A:
         self.instance_var = instance_var
 
 
+@dataclasses.dataclass
+class ClosureHolder:
+    closure: Callable[[], None]
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
@@ -498,7 +472,7 @@ class TestGetReferrerGraph:
                             "TestClass2 (object)",
                         )
                     )
-                assert bfs_names == expected_names
+                assert set(bfs_names) == set(expected_names)
             elif root.name == "TestClass2 instance":
                 assert bfs_names == [
                     (
@@ -685,6 +659,26 @@ class TestGetReferrerGraph:
         # The closure name should be in the graph
         assert any(
             "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_get_referrer_graph_for_closure_referenced_by_object(
+        self,
+    ):
+        the_obj = TestClass1()
+        closure = get_print_input_closure(the_obj)
+        closure_holder = ClosureHolder(closure)
+        graph = referrers.get_referrer_graph(the_obj)
+        assert closure is not None
+        assert closure_holder.closure is closure
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["TestClass1 instance"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        # The closure_holder variable should be in the graph
+        assert any(
+            "test_get_referrer_graph_for_closure_referenced_by_object.closure_holder"
             in node_name
             for node_name in node_names
         ), str(graph)
