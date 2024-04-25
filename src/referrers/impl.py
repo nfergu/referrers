@@ -1,6 +1,7 @@
 import collections
 import gc
 import inspect
+import logging
 import sys
 import traceback
 from abc import ABC, abstractmethod
@@ -33,6 +34,11 @@ _TYPE_LOCAL = "local"
 _TYPE_GLOBAL = "global"
 _TYPE_OBJECT = "object"
 _TYPE_MODULE_VARIABLE = "module variable"
+
+logging.basicConfig(
+    format="[%(levelname)s] %(asctime)s %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -473,11 +479,15 @@ class ObjectNameFinder(ReferrerNameFinder):
                         selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
                     )
                 )
-        except Exception:
+        except Exception as e:
             # Certain containers don't support iteration. We can't do anything about that,
             # so we just fall back to the more general name for the parent object.
             # The catch-all exception isn't ideal, but we don't know what exceptions
             # the container types might raise.
+            logger.warning(
+                f"Error encountered while iterating over a container: {e}. "
+                f"Falling-back to the parent object's type name."
+            )
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
@@ -915,9 +925,13 @@ def _filter_container(
             for item in extractor_func(container)
             if filter_func(item)
         }
-    except RuntimeError:
+    except RuntimeError as e:
         # If we get a RuntimeError, it's likely that the iterable is being modified while
         # we're iterating over it. In this case we make a copy of the container and try again.
+        logger.warning(
+            f"Runtime error encountered while iterating over a container: {e}"
+            f"Retrying with a copy."
+        )
         return {
             selector_func(item)
             for item in extractor_func(copy(container))
