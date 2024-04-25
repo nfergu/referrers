@@ -190,8 +190,9 @@ class TestClosureFinder:
         names = ClosureVariableNameFinder().get_names(the_obj)
         assert closure is not None
         assert len(names) == 1
-        assert "function get_print_input_closure.<locals>.print_input" in next(
-            iter(names)
+        assert (
+            "function get_print_input_closure.<locals>.print_input (closure)"
+            in next(iter(names))
         )
 
     def test_find_module_level_closure(
@@ -199,8 +200,9 @@ class TestClosureFinder:
     ):
         names = ClosureVariableNameFinder().get_names(module_level_variable)
         assert len(names) == 1
-        assert "function get_print_input_closure.<locals>.print_input" in next(
-            iter(names)
+        assert (
+            "function get_print_input_closure.<locals>.print_input (closure)"
+            in next(iter(names))
         )
 
 

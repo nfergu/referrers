@@ -318,7 +318,7 @@ class ClosureVariableNameFinder(NameFinder):
             if hasattr(var_value, "__closure__") and var_value.__closure__:
                 for cell in var_value.__closure__:
                     self._closure_function_names[id(cell.cell_contents)].append(
-                        str(var_value)
+                        f"{str(var_value)} ({_TYPE_CLOSURE})"
                     )
 
     def get_names(self, target_object: Any) -> Set[str]:
