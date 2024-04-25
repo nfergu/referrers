@@ -323,6 +323,11 @@ class ClosureVariableNameFinder(NameFinder):
                     # return a TypeError with "is not a Python function" here, so we
                     # just skip them.
                     continue
+                except ValueError:
+                    # The inspect.getclosurevars fuction raises a ValueError with
+                    # "Cell is empty" in some cases. it's not clear how to avoid this
+                    # so we just skip these cases.
+                    continue
                 for var_name, var_value in closure_vars.nonlocals.items():
                     self._closure_function_names[id(var_value)].append(
                         f"{str(obj)}.{var_name} ({_TYPE_CLOSURE})"
