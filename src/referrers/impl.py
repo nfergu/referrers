@@ -316,10 +316,14 @@ class ClosureVariableNameFinder(NameFinder):
         )
         for obj in gc.get_objects():
             if inspect.isfunction(obj) or inspect.ismethod(obj):
-                closure_vars = inspect.getclosurevars(obj)
-                for var_name, var_value in chain(
-                    closure_vars.nonlocals.items(), closure_vars.globals.items()
-                ):
+                try:
+                    closure_vars = inspect.getclosurevars(obj)
+                except TypeError:
+                    # It's not clear why, but some things that claim to be functions
+                    # return a TypeError with "is not a Python function" here, so we
+                    # just skip them.
+                    continue
+                for var_name, var_value in closure_vars.nonlocals.items():
                     self._closure_function_names[id(var_value)].append(
                         f"{str(obj)}.{var_name} ({_TYPE_CLOSURE})"
                     )
