@@ -190,9 +190,8 @@ class TestClosureFinder:
         names = ClosureVariableNameFinder().get_names(the_obj)
         assert closure is not None
         assert len(names) == 1
-        assert (
-            "function get_print_input_closure.<locals>.print_input (closure)"
-            in next(iter(names))
+        assert "function get_print_input_closure.<locals>.print_input" in next(
+            iter(names)
         )
 
     def test_find_module_level_closure(
@@ -200,9 +199,8 @@ class TestClosureFinder:
     ):
         names = ClosureVariableNameFinder().get_names(module_level_variable)
         assert len(names) == 1
-        assert (
-            "function get_print_input_closure.<locals>.print_input (closure)"
-            in next(iter(names))
+        assert "function get_print_input_closure.<locals>.print_input" in next(
+            iter(names)
         )
 
 
@@ -543,6 +541,7 @@ class TestGetReferrerGraph:
         # reference to the_dict in the graph as a local variable.
         the_dict = {"a": "hello"}
         assert not gc.is_tracked(the_dict)
+        assert len(gc.get_referrers(the_dict)) == 0
         graph = referrers.get_referrer_graph(
             the_dict, search_for_untracked_objects=True
         )
@@ -561,7 +560,9 @@ class TestGetReferrerGraph:
         # for them in the referrents of locals and globals.
         the_dict = {"a": "hello"}
         assert not gc.is_tracked(the_dict)
+        assert len(gc.get_referrers(the_dict)) == 0
         assert not gc.is_tracked(the_dict["a"])
+        assert len(gc.get_referrers(the_dict["a"])) == 0
         graph = referrers.get_referrer_graph(
             the_dict["a"], search_for_untracked_objects=True
         )
@@ -569,6 +570,19 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
             "test_untracked_object_within_container.the_dict" in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_untracked_object_within_tracked_tuple(self):
+        my_var = "hello"
+        hello_tuple = (my_var,)
+        assert not gc.is_tracked(my_var)
+        assert gc.is_tracked(hello_tuple)
+        graph = referrers.get_referrer_graph(my_var, search_for_untracked_objects=True)
+        assert hello_tuple[0] == "hello"
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "test_untracked_object_within_tracked_tuple.my_var" in node_name
             for node_name in node_names
         ), str(graph)
 

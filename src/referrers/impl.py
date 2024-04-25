@@ -675,10 +675,16 @@ class _ReferrerGraphBuilder:
         return inspect.isframe(obj) or inspect.isroutine(obj) or inspect.ismodule(obj)
 
     def _get_referrers(self, target_object: Any) -> Iterable[Any]:
-        if gc.is_tracked(target_object):
-            return gc.get_referrers(target_object)
-        else:
-            return self._untracked_objects_referrers.get(id(target_object), [])
+        # This might be empty if the object is not tracked. However, in some cases untracked
+        # objects have referrers, so we need to eliminate duplicates.
+        refs = gc.get_referrers(target_object)
+        ref_ids = {id(ref) for ref in refs}
+        for untracked_referrer in self._untracked_objects_referrers.get(
+            id(target_object), []
+        ):
+            if id(untracked_referrer) not in ref_ids:
+                refs.append(untracked_referrer)
+        return refs
 
     def _get_initial_target_node(
         self, target_object: Any
