@@ -314,15 +314,14 @@ class ClosureVariableNameFinder(NameFinder):
         self._closure_function_names: Dict[int, List[str]] = collections.defaultdict(
             list
         )
-        for var_value in gc.get_objects():
-            if (
-                inspect.isroutine(var_value)
-                and hasattr(var_value, "__closure__")
-                and var_value.__closure__
-            ):
-                for cell in var_value.__closure__:
-                    self._closure_function_names[id(cell.cell_contents)].append(
-                        f"{str(var_value)} ({_TYPE_CLOSURE})"
+        for obj in gc.get_objects():
+            if inspect.isfunction(obj) or inspect.ismethod(obj):
+                closure_vars = inspect.getclosurevars(obj)
+                for var_name, var_value in chain(
+                    closure_vars.nonlocals.items(), closure_vars.globals.items()
+                ):
+                    self._closure_function_names[id(var_value)].append(
+                        f"{str(obj)}.{var_name} ({_TYPE_CLOSURE})"
                     )
 
     def get_names(self, target_object: Any) -> Set[str]:
