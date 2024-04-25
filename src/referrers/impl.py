@@ -315,7 +315,11 @@ class ClosureVariableNameFinder(NameFinder):
             list
         )
         for var_value in gc.get_objects():
-            if hasattr(var_value, "__closure__") and var_value.__closure__:
+            if (
+                inspect.isroutine(var_value)
+                and hasattr(var_value, "__closure__")
+                and var_value.__closure__
+            ):
                 for cell in var_value.__closure__:
                     self._closure_function_names[id(cell.cell_contents)].append(
                         f"{str(var_value)} ({_TYPE_CLOSURE})"
