@@ -3,7 +3,7 @@ import gc
 import sys
 from time import sleep
 import threading
-from typing import Any, Dict, Iterable, Optional, Callable
+from typing import Any, Dict, Iterable, Optional, Callable, Tuple
 
 import pytest
 from networkx import bfs_edges
@@ -421,6 +421,22 @@ class ClosureHolder:
     closure: Callable[[], None]
 
 
+def _get_nested_tuples() -> Tuple[Tuple[Tuple[Tuple[str]]]]:
+    a = ("tuples all the way down",)
+    b = (a,)
+    c = (b,)
+    d = (c,)
+    # CPython stops tracking tuples if they contain only immutable objects, but
+    # only when they are first seen by the garbage collector, so we need to collect
+    # here to trigger this.
+    gc.collect()
+    assert not gc.is_tracked(a)
+    assert not gc.is_tracked(b)
+    assert not gc.is_tracked(c)
+    assert not gc.is_tracked(d)
+    return d
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
@@ -697,3 +713,16 @@ class TestGetReferrerGraph:
             in node_name
             for node_name in node_names
         ), str(graph)
+
+    def test_with_nested_tuples(
+        self,
+    ):
+        nested_tuples = _get_nested_tuples()
+        graph = referrers.get_referrer_graph(
+            nested_tuples[0][0][0][0], search_for_untracked_objects=True
+        )
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["str instance"] == [root.name for root in roots]
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert sum("tuple[0]" in node_name for node_name in node_names) == 4, str(graph)

@@ -769,6 +769,15 @@ class _ReferrerGraphBuilder:
         Builds a mapping of object IDs to referrers for objects that are not tracked by the
         garbage collector, and returns this along with extra IDs to exclude.
         """
+        # If it wasn't for CPython's handling of nested tuples we could simply call
+        # gc.getobjects() and get the referents of each of these (since most containers
+        # are mutable, and therefore tracked by the garbage collector). However, nested
+        # tuples won't be found by this method, so we use a complicated (and slow) method
+        # of searching referents recursively from the locals, globals and modules.
+        # But perhaps there is a better way? We could perhaps use gc.getobjects() for most
+        # objects and only search for tuples and other untracked objects using this slow
+        # method.
+
         return_dict: Dict[int, List[Any]] = collections.defaultdict(list)
 
         extra_exclusions = set()
