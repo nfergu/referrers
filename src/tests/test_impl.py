@@ -14,6 +14,7 @@ from referrers.impl import (
     LocalVariableNameFinder,
     ModuleLevelNameFinder,
     ObjectNameFinder,
+    _ReferrerGraphBuilder,
 )
 from tests.testing_modules.module2 import imported_module_variable
 
@@ -587,6 +588,9 @@ class TestGetReferrerGraph:
         # In this case "hello" is not tracked by the garbage collector but the object that
         # references it is. However, the object's dict is not tracked, so the implementation
         # needs to search the object's referrents to find the reference to "hello".
+        gc.collect()
+        builders = [o for o in gc.get_objects() if isinstance(o, _ReferrerGraphBuilder)]
+        assert len(builders) == 0, builders
         the_obj = A("hello")
         assert gc.is_tracked(the_obj)
         assert not gc.is_tracked(the_obj.__dict__)

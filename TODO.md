@@ -1,10 +1,9 @@
 # TODO
 
-* Try to simplify searching for untracked objects (maybe by using gc.get_objects() and
-  considering the fact that some untracked objects have referrers that are return from
-  gc.get_referrers()).
-* Revisit "module level" tests. Are they returning the correct results? Are they returning
-  too much?
+* Should GC on each call to referrers?
+* Make searching for untracked objects on by default (or on always?)
+* Revisit tests in TestReferrerGraph and assert on complete (or larger portion of) graph.
+* Revisit "module level" tests. Why do they return so much stuff?
 * Consider removing functions from exclusions when untracked object searching is better.
 * Add sampling for large graphs.
 * Run MyPy and PyLint and fix any issues.

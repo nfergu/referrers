@@ -116,7 +116,7 @@ def get_referrer_graph(
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     search_for_untracked_objects: bool = False,
-    max_untracked_search_depth: int = 10,
+    max_untracked_search_depth: int = 30,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target object.
@@ -137,12 +137,14 @@ def get_referrer_graph(
         search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
-        globals). The default is 10. If you are missing referrers of untracked objects, you
+        globals). The default is 30. If you are missing referrers of untracked objects, you
         can increase this value.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
     """
+    gc.collect()
+
     exclude_object_ids = exclude_object_ids or []
     exclude_object_ids = list(exclude_object_ids)
 
@@ -162,7 +164,7 @@ def get_referrer_graph_for_list(
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     search_for_untracked_objects: bool = False,
-    max_untracked_search_depth: int = 10,
+    max_untracked_search_depth: int = 30,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the list of target objects. All objects in the
@@ -184,12 +186,14 @@ def get_referrer_graph_for_list(
         the search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
-        globals). The default is 10. If you are missing referrers of untracked objects, you
+        globals). The default is 30. If you are missing referrers of untracked objects, you
         can increase this value.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
     """
+    gc.collect()
+
     # We don't allow any iterable, only lists. This is because it's easy to accidentally
     # pass a single big object (like a Pandas dataframe) that is iterable and would be
     # very slow to analyze.
@@ -323,12 +327,12 @@ class LocalVariableNameFinder(NameFinder):
                             break
         return names
 
-    def _get_frame_names(self, frame: FrameType, target_object: Any) -> Set[str]:
+    def _get_frame_names(self, frame: FrameType, target_object: Any) -> Iterable[str]:
         """
         Gets the local_names of the target object in the local variables of the frame.
         :param frame: The frame to search.
         :param target_object: The object to search for.
-        :return: A set of local_names of the target object in the frame.
+        :return: The local names of the target object in the frame.
         """
         return _filter_container(
             frame.f_locals,
@@ -369,12 +373,12 @@ class GlobalVariableNameFinder(NameFinder):
                         break
         return names
 
-    def _get_frame_names(self, frame: FrameType, target_object: Any) -> Set[str]:
+    def _get_frame_names(self, frame: FrameType, target_object: Any) -> Iterable[str]:
         """
         Gets the local_names of the target object in the local variables of the frame.
         :param frame: The frame to search.
         :param target_object: The object to search for.
-        :return: A set of local_names of the target object in the frame.
+        :return: The global names of the target object in the frame.
         """
         return _filter_container(
             frame.f_globals,
@@ -620,14 +624,22 @@ class _ReferrerGraphBuilder:
                 "Could not determine the top-level package of the calling code. "
                 "Please specify the module_prefixes parameter to set this explicitly."
             )
+
+        # Populate a dict of object IDs to the closures that enclose them.
+        # This is used for finding referrers that are closures, and identifying
+        # the name of the variable that is enclosed.
         self._id_to_enclosing_closure = self._get_closure_functions()
+
+        self._target_objects = target_objects
+
         excluded_id_set = {
             id(self),
             id(self.__dict__),
             id(target_objects),
             id(self._id_to_enclosing_closure),
         } | set(exclude_object_ids)
-        self._target_objects = target_objects
+
+        # Get the referrers of the target objects that are not tracked by the garbage collector.
         (
             self._untracked_objects_referrers,
             extra_exclusions,
@@ -637,9 +649,11 @@ class _ReferrerGraphBuilder:
             max_depth=max_untracked_search_depth,
             module_prefixes=module_prefixes,
         )
+
         # Note: when we create the name finders is important because some implementations
         # start to track the objects that are in the environment when they are created.
         self._name_finders = _get_name_finders(module_prefixes)
+
         # Exclude the builder and its attributes from the referrer name finders, since we
         # store a reference to the target objects. Also exclude the target objects container.
         self._referrer_name_finders = _get_referrer_name_finders(
@@ -769,15 +783,6 @@ class _ReferrerGraphBuilder:
         Builds a mapping of object IDs to referrers for objects that are not tracked by the
         garbage collector, and returns this along with extra IDs to exclude.
         """
-        # If it wasn't for CPython's handling of nested tuples we could simply call
-        # gc.getobjects() and get the referents of each of these (since most containers
-        # are mutable, and therefore tracked by the garbage collector). However, nested
-        # tuples won't be found by this method, so we use a complicated (and slow) method
-        # of searching referents recursively from the locals, globals and modules.
-        # But perhaps there is a better way? We could perhaps use gc.getobjects() for most
-        # objects and only search for tuples and other untracked objects using this slow
-        # method.
-
         return_dict: Dict[int, List[Any]] = collections.defaultdict(list)
 
         extra_exclusions = set()
@@ -790,11 +795,9 @@ class _ReferrerGraphBuilder:
             id(obj) for obj in target_objects if not gc.is_tracked(obj)
         }
 
-        # Look through the referents of all locals and globals to try and find
-        # untracked objects.
         if len(untracked_target_object_ids) > 0:
 
-            roots = self._get_roots_from_locals_globals_and_modules(
+            roots = self._get_untracked_search_roots(
                 do_not_visit=do_not_visit,
                 module_prefixes=module_prefixes,
             )
@@ -833,68 +836,104 @@ class _ReferrerGraphBuilder:
         depth: int,
         max_depth: int,
     ):
-        # This method is pretty horrible. It can maybe be made less complex.
+        """
+        Populates the referrers of untracked objects, where the object chain leads to one of
+        the target objects we are looking for. This is a recursive function that walks the
+        object graph, starting from the roots.
+        """
+        # This method is a bit horrible. It can maybe be made less complex.
+        # The fact that we're using a stack *and* recursing is a bit weird, so
+        # I'm pretty sure that can be fixed.
         obj_id = id(obj)
         if inspect.isframe(obj) or obj_id in do_not_visit or depth >= max_depth:
             return
         else:
             do_not_visit.add(obj_id)
             for referent in gc.get_referents(obj):
-                referent_id = id(referent)
-                is_tracked = gc.is_tracked(referent)
-                pop = False
-                # Push untracked objects or objects that are referred to by untracked objects
-                # onto the stack (though I'm not sure if this is possible).
-                if (not is_tracked) or len(untracked_stack) > 0:
+                if not gc.is_tracked(referent):
+                    referent_id = id(referent)
+                    # Push the referrer of the untracked object on to the stack.
+                    # We will pop this off when we return from the recursion.
                     untracked_stack.append(obj)
-                    pop = True
-                # If we find one of the target objects, add the current object to the
-                # referrers list for the target object. We also walk back up the untracked
-                # object stack and add any other untracked objects that refer indirectly
-                # to the target object.
-                if referent_id in untracked_target_object_ids:
-                    id_to_add = referent_id
-                    for untracked_obj in reversed(untracked_stack):
-                        untracked_object_referrers[id_to_add].append(untracked_obj)
-                        id_to_add = id(untracked_obj)
-                # Recurse into the referent. The exit condition is when we find a referent
-                # that is in the do_not_visit set, or when we reach the maximum depth.
-                self._populate_untracked_object_referrers(
-                    obj=referent,
-                    do_not_visit=do_not_visit,
-                    untracked_object_referrers=untracked_object_referrers,
-                    untracked_target_object_ids=untracked_target_object_ids,
-                    untracked_stack=untracked_stack,
-                    depth=depth + 1,
-                    max_depth=max_depth,
-                )
-                if pop:
+                    # If we find one of the target objects, add the current object to the
+                    # referrers list for the target object. We also walk back up the untracked
+                    # object stack and add any other objects that refer indirectly
+                    # to the target object.
+                    if referent_id in untracked_target_object_ids:
+                        id_to_add = referent_id
+                        for untracked_obj in reversed(untracked_stack):
+                            untracked_object_referrers[id_to_add].append(untracked_obj)
+                            id_to_add = id(untracked_obj)
+                    # Recurse into the referent. The exit condition is when we encounter an
+                    # object in the do_not_visit list, we hit the max depth, or we find a
+                    # tracked object (but I'm not sure that untracked objects can refer
+                    # to tracked objects, so this last case may not happen in practice).
+                    self._populate_untracked_object_referrers(
+                        obj=referent,
+                        do_not_visit=do_not_visit,
+                        untracked_object_referrers=untracked_object_referrers,
+                        untracked_target_object_ids=untracked_target_object_ids,
+                        untracked_stack=untracked_stack,
+                        depth=depth + 1,
+                        max_depth=max_depth,
+                    )
                     untracked_stack.pop()
 
-    def _get_roots_from_locals_globals_and_modules(
+    def _contains_untracked_objects(self, obj: Any):
+        return any(not gc.is_tracked(referent) for referent in gc.get_referents(obj))
+
+    def _get_untracked_search_roots(
         self, do_not_visit: Set[int], module_prefixes: Optional[Collection[str]] = None
     ) -> List[Any]:
+        """
+        Gets "root" objects from which to search for untracked objects. We search in all
+        objects that have untracked referents, from within:
+
+         * The result of gc.get_objects()
+         * Local variables
+         * Global variables
+         * Module-level variables that are no global variables.
+        """
         roots = []
+
+        for obj in gc.get_objects():
+            if self._contains_untracked_objects(obj):
+                roots.append(obj)
+
         for thread_frames in _get_frames_for_all_threads().values():
             for frame in thread_frames:
                 # Exclude the locals and globals themselves from the search.
                 do_not_visit.add(id(frame.f_locals))
                 do_not_visit.add(id(frame.f_globals))
-                for var_value in chain(
-                    frame.f_locals.values(), frame.f_globals.values()
-                ):
-                    roots.append(var_value)
+                roots.extend(
+                    _filter_container(
+                        frame.f_locals,
+                        extractor_func=lambda x: x.values(),
+                        filter_func=lambda x: self._contains_untracked_objects(x),
+                        selector_func=lambda x: x,
+                    )
+                )
+                roots.extend(
+                    _filter_container(
+                        frame.f_globals,
+                        extractor_func=lambda x: x.values(),
+                        filter_func=lambda x: self._contains_untracked_objects(x),
+                        selector_func=lambda x: x,
+                    )
+                )
+
+        self._global_vars = _get_global_vars()
         self._modules = [
             module
             for name, module in sys.modules.items()
             if self._matches_prefixes(name, module_prefixes)
         ]
-        self._global_vars = _get_global_vars()
         for module in self._modules:
             if hasattr(module, "__dict__"):
                 for var_name, var_value in module.__dict__.items():
                     if (
-                        _GlobalVariable(var_name, id(var_value), id(module))
+                        self._contains_untracked_objects(var_value)
+                        and _GlobalVariable(var_name, id(var_value), id(module))
                         not in self._global_vars
                     ):
                         roots.append(var_value)
@@ -969,7 +1008,16 @@ def _get_global_vars() -> Set[_GlobalVariable]:
     global_vars: Set[_GlobalVariable] = set()
     for thread_frames in _get_frames_for_all_threads().values():
         for frame in thread_frames:
-            for var_name, var_value in frame.f_globals.items():
+            # We use filter_container here just to be more robust to modification of
+            # f_globals during iteration. I've never seen this in practice, but I
+            # *think* it's a possibility.
+            global_tuples = _filter_container(
+                frame.f_globals,
+                extractor_func=lambda x: x.items(),
+                filter_func=lambda x: True,
+                selector_func=lambda x: x,
+            )
+            for var_name, var_value in global_tuples:
                 module = inspect.getmodule(var_value)
                 if module:
                     global_vars.add(
@@ -1004,7 +1052,7 @@ def _filter_container(
     extractor_func: Callable[[Any], Iterable[_T]],
     filter_func: Callable[[_T], bool],
     selector_func: Callable,
-) -> Set[_V]:
+) -> Iterable[_V]:
     """
     Filters a container using the given functions.
 
@@ -1015,14 +1063,14 @@ def _filter_container(
     :param extractor_func: A function that creates an iterable from the container
     :param filter_func: A function that filters items from the iterable
     :param selector_func: A function that selects items from the iterable
-    :return: A set of selected items.
+    :return: The selected items.
     """
     try:
-        return {
+        return [
             selector_func(item)
             for item in extractor_func(container)
             if filter_func(item)
-        }
+        ]
     except RuntimeError as e:
         # If we get a RuntimeError, it's likely that the iterable is being modified while
         # we're iterating over it. In this case we make a copy of the container and try again.
@@ -1030,8 +1078,8 @@ def _filter_container(
             f"Runtime error encountered while iterating over a container: {e}"
             f"Retrying with a copy."
         )
-        return {
+        return [
             selector_func(item)
             for item in extractor_func(copy(container))
             if filter_func(item)
-        }
+        ]
