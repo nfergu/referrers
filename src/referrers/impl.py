@@ -122,6 +122,8 @@ def get_referrer_graph(
 
     To analyze a list of objects, use `get_referrer_graph_for_list` instead.
 
+    Note: This function forces a garbage collection.
+
     :param target_object: The object to analyze.
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
         `None` to search to unlimited depth (but be careful with this: it may take a long time).
@@ -161,7 +163,9 @@ def get_referrer_graph_for_list(
     Gets a graph of referrers for the list of target objects. All objects in the
     list are analyzed. To analyze a single object, use `get_referrer_graph`.
 
-    The `target_objects` list is excluded from the referrer grap.
+    The `target_objects` list is excluded from the referrer graph.
+
+    Note: This function forces a garbage collection.
 
     :param target_objects: The objects to analyze. This must be a list.
     :param max_depth: The maximum depth to search for referrers. The default is 10. Specify
@@ -177,6 +181,8 @@ def get_referrer_graph_for_list(
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
     """
+    # Garbage collect before we start, otherwise repeated calls to this function may identify
+    # referrers that are internal to this module.
     gc.collect()
 
     # We don't allow any iterable, only lists. This is because it's easy to accidentally
