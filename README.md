@@ -111,10 +111,10 @@ for obj in top_10_objects:
     print(
         referrers.get_referrer_graph(
             obj,
-            search_for_untracked_objects=True,
             exclude_object_ids=[id(top_10_objects)],
         )
     )
+
 
 ```
 
@@ -144,7 +144,6 @@ for obj in diff:
         referrers.get_referrer_graph(
             obj,
             exclude_object_ids=[id(o1), id(o2), id(diff), id(o2_ids)],
-            search_for_untracked_objects=True,
         )
     )
 ```
@@ -190,57 +189,6 @@ def my_function():
 my_function()
 ```
 
-## Untracked Objects
-
-By default, `get_referrer_graph` will raise an error if the object passed to it is not
-tracked by the garbage collector. In CPython, for example, immutable objects and some
-containers that contain only immutable objects (like dicts and tuples) are not tracked
-by the garbage collector.
-
-However, the `search_for_untracked_objects` flag can be set to `True` when calling
-`get_referrer_graph` to try to find referrers for objects are not tracked by the garbage
-collector. This option is experimental and may not work well in all cases.
-
-For example, here we find the referrers of an untracked object (a `dict` containing only
-immutable objects):
-
-```python
-import dataclasses
-import gc
-from typing import Dict
-
-import referrers
-
-@dataclasses.dataclass
-class ParentClass:
-    member_variable: Dict
-
-def my_func():
-    local_variable = ParentClass({"a": 1})
-    assert not gc.is_tracked(local_variable.member_variable)
-    print(referrers.get_referrer_graph(local_variable.member_variable, search_for_untracked_objects=True))
-
-my_func()
-```
-
-This will output something like:
-
-```plaintext
-╙── dict instance (id=4483928640)
-    └─╼ ParentClass.member_variable (instance attribute) (id=4482048576)
-        └─╼ my_func.local_variable (local) (id=4482048576)
-```
-
-### Known limitations with untracked objects
-
-* The depth of the search for untracked objects is limited by the `max_untracked_search_depth`
-  parameter. If this is set too low, some untracked objects may be missing from the graph.
-  Try setting this to a higher value if you think this is happening
-* Sometimes internal references (from within `referrers`) may be included in the graph when
-  finding untracked objects. It should be possible to get rid of these, but I'm not sure if I've
-  found them all yet.
-* Finding untracked objects may be slow.
-
 ## Multi-threading
 
 Referrers works well with multiple threads. For example, you can have a separate thread that
@@ -280,6 +228,44 @@ def my_function():
     sleep(1000)
 
 my_function()
+```
+
+## Untracked Objects
+
+This library will try to find referrers for objects that are not tracked by the garbage
+collector. For example, mutable objects, and collections containing only immutable objects in
+CPython. However, this may be slower than for tracked objects, and is limited by the
+`max_untracked_search_depth` parameter. Try setting this to a higher value if you think there
+are referrers missing from the graph.
+
+For example, here we find the referrers of an untracked object (a `dict` containing only
+immutable objects):
+
+```python
+import dataclasses
+import gc
+from typing import Dict
+
+import referrers
+
+@dataclasses.dataclass
+class ParentClass:
+    member_variable: Dict
+
+def my_func():
+    local_variable = ParentClass({"a": 1})
+    assert not gc.is_tracked(local_variable.member_variable)
+    print(referrers.get_referrer_graph(local_variable.member_variable))
+
+my_func()
+```
+
+This will output something like:
+
+```plaintext
+╙── dict instance (id=4483928640)
+    └─╼ ParentClass.member_variable (instance attribute) (id=4482048576)
+        └─╼ my_func.local_variable (local) (id=4482048576)
 ```
 
 ## Source
