@@ -115,7 +115,6 @@ def get_referrer_graph(
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
-    search_for_untracked_objects: bool = False,
     max_untracked_search_depth: int = 30,
 ) -> ReferrerGraph:
     """
@@ -129,12 +128,6 @@ def get_referrer_graph(
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
         If this is not specified, the top-level package of the calling code is used.
-    :param search_for_untracked_objects: Whether to search for referrers of objects that are
-        not tracked by the garbage collector. By default, this is `False` because it can be
-        slow to search for untracked objects, and it is not reliable in all cases. If this is
-        set to `False` and `target_object` is untracked, an error will be raised. If this is
-        set to `True` then `max_untracked_search_depth` is used to control the depth of the
-        search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 30. If you are missing referrers of untracked objects, you
@@ -153,7 +146,6 @@ def get_referrer_graph(
         max_depth=max_depth,
         exclude_object_ids=exclude_object_ids,
         module_prefixes=module_prefixes,
-        search_for_untracked_objects=search_for_untracked_objects,
         max_untracked_search_depth=max_untracked_search_depth,
     )
 
@@ -163,7 +155,6 @@ def get_referrer_graph_for_list(
     max_depth: Optional[int] = 10,
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
-    search_for_untracked_objects: bool = False,
     max_untracked_search_depth: int = 30,
 ) -> ReferrerGraph:
     """
@@ -178,12 +169,6 @@ def get_referrer_graph_for_list(
     :param exclude_object_ids: A list of object IDs to exclude from the referrer graph.
     :param module_prefixes: The prefixes of the modules to search for module-level variables.
         If this is `None`, the top-level package of the calling code is used.
-    :param search_for_untracked_objects: Whether to search for referrers of objects that are
-        not tracked by the garbage collector. By default, this is `False` because it can be
-        slow to search for untracked objects, and it is not reliable in all cases. If this is
-        set to `False` and any of `target_objects` are untracked, an error will be raised. If
-        this is set to `True` then `max_untracked_search_depth` is used to control the depth of
-        the search.
     :param max_untracked_search_depth: The maximum depth to search for referrers of untracked
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 30. If you are missing referrers of untracked objects, you
@@ -210,16 +195,6 @@ def get_referrer_graph_for_list(
         for frame in thread_frames:
             exclude_object_ids.append(id(frame.f_locals))
             exclude_object_ids.append(id(frame.f_globals))
-
-    if not search_for_untracked_objects:
-        untracked_objects = [obj for obj in target_objects if not gc.is_tracked(obj)]
-        if untracked_objects:
-            raise ValueError(
-                "Some target objects are not tracked by the garbage collector. "
-                "Set search_for_untracked_objects to True to search for referrers of "
-                "these objects, but bear in mind that this can be slow and may not be "
-                "reliable in all cases."
-            )
 
     builder = _ReferrerGraphBuilder(
         target_objects,

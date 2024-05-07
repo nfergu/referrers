@@ -540,9 +540,7 @@ class TestGetReferrerGraph:
         the_dict = {"a": "hello"}
         assert not gc.is_tracked(the_dict)
         assert len(gc.get_referrers(the_dict)) == 0
-        graph = referrers.get_referrer_graph(
-            the_dict, search_for_untracked_objects=True
-        )
+        graph = referrers.get_referrer_graph(the_dict)
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -561,9 +559,7 @@ class TestGetReferrerGraph:
         assert len(gc.get_referrers(the_dict)) == 0
         assert not gc.is_tracked(the_dict["a"])
         assert len(gc.get_referrers(the_dict["a"])) == 0
-        graph = referrers.get_referrer_graph(
-            the_dict["a"], search_for_untracked_objects=True
-        )
+        graph = referrers.get_referrer_graph(the_dict["a"])
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -576,7 +572,7 @@ class TestGetReferrerGraph:
         hello_tuple = (my_var,)
         assert not gc.is_tracked(my_var)
         assert gc.is_tracked(hello_tuple)
-        graph = referrers.get_referrer_graph(my_var, search_for_untracked_objects=True)
+        graph = referrers.get_referrer_graph(my_var)
         assert hello_tuple[0] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -597,7 +593,6 @@ class TestGetReferrerGraph:
         assert not gc.is_tracked(the_obj.instance_var)
         graph = referrers.get_referrer_graph(
             the_obj.instance_var,
-            search_for_untracked_objects=True,
         )
         assert the_obj.instance_var == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
@@ -608,21 +603,10 @@ class TestGetReferrerGraph:
         assert any("A (object)" in node_name for node_name in node_names), str(graph)
         assert any(".instance_var" in node_name for node_name in node_names), str(graph)
 
-    def test_untracked_object_not_enabled(self):
-        a = "hello"
-        assert not gc.is_tracked(a)
-        with pytest.raises(
-            ValueError,
-            match="Some target objects are not tracked by the garbage collector.*",
-        ):
-            referrers.get_referrer_graph(a)
-
     def test_get_referrer_graph_for_unimported_module_with_explicit_module_prefix(self):
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
-        graph = referrers.get_referrer_graph(
-            178, module_prefixes=["tests"], search_for_untracked_objects=True
-        )
+        graph = referrers.get_referrer_graph(178, module_prefixes=["tests"])
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int instance"] == [root.name for root in roots]
@@ -638,7 +622,7 @@ class TestGetReferrerGraph:
     ):
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
-        graph = referrers.get_referrer_graph(178, search_for_untracked_objects=True)
+        graph = referrers.get_referrer_graph(178)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int instance"] == [root.name for root in roots]
@@ -655,7 +639,7 @@ class TestGetReferrerGraph:
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines a class called IntContainer with an instance attribute that references
         # 145.
-        graph = referrers.get_referrer_graph(145, search_for_untracked_objects=True)
+        graph = referrers.get_referrer_graph(145)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int instance"] == [root.name for root in roots]
@@ -722,9 +706,7 @@ class TestGetReferrerGraph:
         self,
     ):
         nested_tuples = _get_nested_tuples()
-        graph = referrers.get_referrer_graph(
-            nested_tuples[0][0][0][0], search_for_untracked_objects=True
-        )
+        graph = referrers.get_referrer_graph(nested_tuples[0][0][0][0])
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["str instance"] == [root.name for root in roots]
