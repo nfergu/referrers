@@ -104,18 +104,20 @@ For example, to print the referrers of the top 10 largest objects using
 from pympler import muppy
 import referrers
 
-top_10_objects = (muppy.sort(muppy.get_objects()))[-10:]
-top_10_objects.reverse()
-
-for obj in top_10_objects:
-    print(
-        referrers.get_referrer_graph(
-            obj,
-            exclude_object_ids=[id(top_10_objects)],
+def main():
+    top_10_objects = (muppy.sort(muppy.get_objects()))[-10:]
+    top_10_objects.reverse()
+    
+    for obj in top_10_objects:
+        print(
+            referrers.get_referrer_graph(
+                obj,
+                exclude_object_ids=[id(top_10_objects)],
+            )
         )
-    )
-
-
+        
+if __name__ == "__main__":
+    main()
 ```
 
 Note that this example sets the `search_for_untracked_objects` flag to `True` to try to find
@@ -129,23 +131,28 @@ between two points in time:
 import referrers
 from pympler import summary, muppy
 
-o1 = muppy.get_objects()
-my_dict = {'a': [1]}
-o2 = muppy.get_objects()
-
-o1_ids = {id(obj) for obj in o1}
-o2_ids = {id(obj): obj for obj in o2}
-diff = [obj for obj_id, obj in o2_ids.items() if obj_id not in o1_ids]
-
-summary.print_(summary.get_diff(summary.summarize(o1), summary.summarize(o2)))
-
-for obj in diff:
-    print(
-        referrers.get_referrer_graph(
-            obj,
-            exclude_object_ids=[id(o1), id(o2), id(diff), id(o2_ids)],
+def main():
+    o1 = muppy.get_objects()
+    my_dict = {'a': [1]}
+    o2 = muppy.get_objects()
+    
+    o1_ids = {id(obj) for obj in o1}
+    o2_ids = {id(obj): obj for obj in o2}
+    diff = [obj for obj_id, obj in o2_ids.items() if obj_id not in o1_ids]
+    
+    summary.print_(summary.get_diff(summary.summarize(o1), summary.summarize(o2)))
+    
+    for obj in diff:
+        print(
+            referrers.get_referrer_graph(
+                obj,
+                exclude_object_ids=[id(o1), id(o2), id(diff), id(o2_ids)],
+            )
         )
-    )
+
+if __name__ == '__main__':
+    main()
+
 ```
 
 This will print a summary of the objects that have been created between o1 and o2,
