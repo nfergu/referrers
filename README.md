@@ -210,6 +210,7 @@ my_function()
 
 This will produce an image like this:
 
+<img width="495" alt="Image of referrer graph" src="https://github.com/nfergu/referrers/assets/1291583/3414c450-3913-4b01-a6ce-c2b974c03144">
 
 
 ## Multi-threading
