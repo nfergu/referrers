@@ -120,9 +120,8 @@ if __name__ == "__main__":
     main()
 ```
 
-Note that this example sets the `search_for_untracked_objects` flag to `True` to try to find
-referrers for objects that are not tracked by the garbage collector. It also sets
-`exclude_object_ids` to exclude the `top_10_objects` variable from the graph.
+Note that this example  `exclude_object_ids` to exclude the `top_10_objects`
+variable from the graph.
 
 Here's how to find the referrers of all objects that have been created
 between two points in time:
