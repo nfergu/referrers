@@ -16,5 +16,5 @@ pytest = "^8.1.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[project.urls]
-Source = "https://github.com/nfergu/referrers"
+[tool.poetry]
+repository = "https://github.com/nfergu/referrers"
