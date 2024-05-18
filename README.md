@@ -183,17 +183,33 @@ class ChildClass:
 class ContainerClass:
     instance_attribute: ChildClass
 
+def node_label(node: referrers.ReferrerGraphNode) -> str:
+    return f"{node.name.replace(" ", "\n", 1)}"
+
 def my_function():
     local_variable = ContainerClass(ChildClass())
+    other_variable = ContainerClass(local_variable.instance_attribute)
     graph = referrers.get_referrer_graph(local_variable.instance_attribute)
-    nx.draw(
-        graph.to_networkx(),
+    
+    nx_graph = graph.to_networkx().reverse()
+    nx.draw_networkx(
+        nx_graph,
+        pos=nx.spectral_layout(nx_graph),
         with_labels=True,
+        font_size=8,
+        labels={node: node_label(node) for node in nx_graph.nodes},
+        node_color="lightblue",
+        node_size=1400,
     )
+    plt.margins(x=0.2)
     plt.show()
 
 my_function()
 ```
+
+This will produce an image like this:
+
+
 
 ## Multi-threading
 
