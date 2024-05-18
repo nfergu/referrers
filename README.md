@@ -191,6 +191,7 @@ def my_function():
     other_variable = ContainerClass(local_variable.instance_attribute)
     graph = referrers.get_referrer_graph(local_variable.instance_attribute)
     
+    # Reverse the graph so that arrows point from referrers to referents
     nx_graph = graph.to_networkx().reverse()
     nx.draw_networkx(
         nx_graph,
