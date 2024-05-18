@@ -4,6 +4,7 @@ version = "0.5.3"
 description = "Finds the graph of referrers for a Python object"
 authors = ["Neil Ferguson"]
 readme = "README.md"
+repository = "https://github.com/nfergu/referrers"
 
 [tool.poetry.dependencies]
 python = ">=3.8"
@@ -15,6 +16,3 @@ pytest = "^8.1.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
-repository = "https://github.com/nfergu/referrers"
