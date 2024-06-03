@@ -593,17 +593,22 @@ class _ReferrerGraphBuilder:
         if not module_prefixes:
             stack_frames = inspect.stack()
             for frame_info in stack_frames:
-                frame_module = inspect.getmodule(frame_info.frame).__name__
-                if not frame_module.startswith(_PACKAGE_PREFIX):
+                frame_module = inspect.getmodule(frame_info.frame)
+                if frame_module and not frame_module.__name__.startswith(
+                    _PACKAGE_PREFIX
+                ):
                     # Use the top-level package of the calling code as the module prefix
                     # (with a trailing dot). For example, if the calling code is in a module
                     # called my_module.do_thing, the module prefix would be "my_module.".
+                    # In some cases (like Jupyter notebooks), there may not be a top-level
+                    # package, in which there won't be any module prefixes. We log a warning
+                    # in this case.
                     module_prefixes = [f"{frame_module.split('.')[0]}."]
                     break
         if not module_prefixes:
-            raise ValueError(
+            logger.warning(
                 "Could not determine the top-level package of the calling code. "
-                "Please specify the module_prefixes parameter to set this explicitly."
+                "You can specify the module_prefixes parameter to set this explicitly."
             )
 
         # Populate a dict of object IDs to the closures that enclose them.
