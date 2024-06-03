@@ -603,7 +603,7 @@ class _ReferrerGraphBuilder:
                     # In some cases (like Jupyter notebooks), there may not be a top-level
                     # package, in which there won't be any module prefixes. We log a warning
                     # in this case.
-                    module_prefixes = [f"{frame_module.split('.')[0]}."]
+                    module_prefixes = [f"{frame_module.__name__.split('.')[0]}."]
                     break
         if not module_prefixes:
             logger.warning(
