@@ -28,6 +28,8 @@ from typing import (
 
 import networkx as nx
 
+from referrers import networkx_copy
+
 _PACKAGE_PREFIX = "referrers."
 
 _TYPE_LOCAL = "local"
@@ -572,7 +574,11 @@ class _ReferrerGraph(ReferrerGraph):
         self._graph = graph
 
     def __str__(self):
-        return "\n" + "\n".join(line for line in nx.generate_network_text(self._graph))
+        # Use a copy of the networkx generate_network_text function to avoid depending on
+        # a narrow range of networkx versions.
+        return "\n" + "\n".join(
+            line for line in networkx_copy.generate_network_text(self._graph)
+        )
 
     def to_networkx(self) -> nx.DiGraph:
         return self._graph

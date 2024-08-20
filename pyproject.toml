@@ -8,7 +8,7 @@ repository = "https://github.com/nfergu/referrers"
 
 [tool.poetry.dependencies]
 python = ">=3.8"
-networkx = ">=3.1.0"
+networkx = ">=2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
