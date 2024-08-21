@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from copy import copy
 from dataclasses import dataclass
 from itertools import chain
+from timeit import default_timer
 from types import FrameType
 from typing import (
     Any,
@@ -118,6 +119,7 @@ def get_referrer_graph(
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,
+    timeout: Optional[float] = None,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target object.
@@ -136,6 +138,10 @@ def get_referrer_graph(
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 30. If you are missing referrers of untracked objects, you
         can increase this value.
+    :param timeout: The maximum time to spend searching for referrers. If this time is exceeded,
+        a partial graph is returned. Note that this timeout is approximate, and may not be
+        effective if the search is blocked by a long-running operation. The default is `None`
+        which means no timeout.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
@@ -151,6 +157,7 @@ def get_referrer_graph(
         exclude_object_ids=exclude_object_ids,
         module_prefixes=module_prefixes,
         max_untracked_search_depth=max_untracked_search_depth,
+        timeout=timeout,
     )
 
 
@@ -160,6 +167,7 @@ def get_referrer_graph_for_list(
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,
+    timeout: Optional[float] = None,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the list of target objects. All objects in the
@@ -179,6 +187,10 @@ def get_referrer_graph_for_list(
         objects. This is the depth that referents will be searched from the roots (locals and
         globals). The default is 30. If you are missing referrers of untracked objects, you
         can increase this value.
+    :param timeout: The maximum time to spend searching for referrers. If this time is exceeded,
+        a partial graph is returned. Note that this timeout is approximate, and may not be
+        effective if the search is blocked by a long-running operation. The default is `None`
+        which means no timeout.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
@@ -210,7 +222,7 @@ def get_referrer_graph_for_list(
         max_untracked_search_depth=max_untracked_search_depth,
         exclude_object_ids=exclude_object_ids,
     )
-    return builder.build(max_depth=max_depth)
+    return builder.build(max_depth=max_depth, timeout=timeout)
 
 
 class NameFinder(ABC):
@@ -652,7 +664,10 @@ class _ReferrerGraphBuilder:
             excluded_id_set | extra_exclusions
         )
 
-    def build(self, max_depth: Optional[int]) -> ReferrerGraph:
+    def build(
+        self, max_depth: Optional[int], timeout: Optional[float]
+    ) -> ReferrerGraph:
+        start_time = default_timer()
         graph = nx.DiGraph()
 
         stack: Deque[Tuple[ReferrerGraphNode, Any, int]] = collections.deque(
@@ -664,6 +679,12 @@ class _ReferrerGraphBuilder:
         # Do a depth-first search of the object graph, adding nodes and edges to the graph
         # as we go.
         while stack:
+            if self._reached_timeout(start_time=start_time, timeout=timeout):
+                logger.warning(
+                    f"Reached timeout of {timeout} seconds while building referrer graph. "
+                    f"Returning partial graph."
+                )
+                break
             target_graph_node, target_object, depth = stack.pop()
 
             if max_depth is None or depth < max_depth:
@@ -697,6 +718,12 @@ class _ReferrerGraphBuilder:
                                 )
 
         return _ReferrerGraph(graph)
+
+    def _reached_timeout(self, start_time: float, timeout: Optional[float]) -> bool:
+        if timeout is None:
+            return False
+        else:
+            return default_timer() - start_time > timeout
 
     def _is_excluded(self, obj: Any) -> bool:
         # We exclude these objects because anything referenced by them should be picked-up

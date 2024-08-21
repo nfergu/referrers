@@ -712,3 +712,10 @@ class TestGetReferrerGraph:
         assert ["str instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert sum("tuple[0]" in node_name for node_name in node_names) == 4, str(graph)
+
+    def test_get_referrer_graph_with_timeout(self):
+        the_reference = TestClass1()
+        graph = referrers.get_referrer_graph(the_reference, timeout=0.0)
+        nx_graph = graph.to_networkx()
+        # The graph should be empty as we should have timed-out immediately.
+        assert len(nx_graph.nodes) == 0

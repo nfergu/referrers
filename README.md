@@ -158,6 +158,22 @@ This will print a summary of the objects that have been created between o1 and o
 as well as the variable names that reference these objects. This can be useful for finding
 memory leaks.
 
+## Performance
+
+Finding referrers can be slow for objects with many referrers. Use the following options
+to control the performance of the search:
+
+- `timeout`: The maximum time to spend searching for referrers. If this time is exceeded,
+  a partial graph is returned. Note that this timeout is approximate, and may not be
+  effective if the search is blocked by a long-running operation. The default is `None`
+  which means no timeout.
+- `max_depth`: The maximum depth to search for referrers. The default is 10. Specify
+  `None` to search to unlimited depth (but be careful with this: it may take a long time).
+- `max_untracked_search_depth`: The maximum depth to search for referrers of untracked
+  objects. This is the depth that referents will be searched from the roots (locals and
+  globals). The default is 30. If you are missing referrers of untracked objects, you
+  can increase this value.
+
 ## Integration with NetworkX
 
 The graph produced by `get_referrer_graph` can be converted to a NetworkX graph using
