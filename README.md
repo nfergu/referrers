@@ -173,6 +173,11 @@ to control the performance of the search:
   objects. This is the depth that referents will be searched from the roots (locals and
   globals). The default is 30. If you are missing referrers of untracked objects, you
   can increase this value.
+- `single_object_referrer_limit`: The maximum number of referrers to include in the graph
+  for an individual object instance. If the limit is exceeded, the graph will contain a
+  node containing the text "Referrer limit of N exceeded". Note that this limit is
+  approximate and does not apply to all referrer types. Specifically, it only applies to
+  object references. Additionally, this limit does not apply to immortal objects.
 
 ## Integration with NetworkX
 

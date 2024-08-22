@@ -145,9 +145,9 @@ def get_referrer_graph(
         which means no timeout.
     :param single_object_referrer_limit: The maximum number of referrers to include in the graph
         for an individual object instance. If the limit is exceeded, the graph will contain a
-        node containing the text "Referrer limit of N exceedded". Note that this limit is
+        node containing the text "Referrer limit of N exceeded". Note that this limit is
         approximate and does not apply to all referrers types. Specifically, it only applies to
-        object references.
+        object references. Additionally, this limit does not apply to immortal objects.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
@@ -201,9 +201,9 @@ def get_referrer_graph_for_list(
         which means no timeout.
     :param single_object_referrer_limit: The maximum number of referrers to include in the graph
         for an individual object instance. If the limit is exceeded, the graph will contain a
-        node containing the text "Referrer limit of N exceedded". Note that this limit is
+        node containing the text "Referrer limit of N excedded". Note that this limit is
         approximate and does not apply to all referrers types. Specifically, it only applies to
-        object references.
+        object references. Additionally, this limit does not apply to immortal objects.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
