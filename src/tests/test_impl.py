@@ -475,7 +475,6 @@ class TestGetReferrerGraph:
         the_reference = TestClass1()
         the_reference2 = TestClass2(my_attribute=the_reference)
         graph = referrers.get_referrer_graph_for_list([the_reference, the_reference2])
-        print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert {"TestClass1 instance", "TestClass2 instance"} == set(
@@ -612,7 +611,6 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(
             the_obj.instance_var,
         )
-        print(graph)
         assert the_obj.instance_var == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -769,6 +767,5 @@ class TestGetReferrerGraph:
         # we need to deal with this somehow.
         mystr = "hello"
         graph = referrers.get_referrer_graph(mystr)
-        print(graph)
         assert "Referrer limit of 100 exceeded" not in str(graph)
         assert "mystr" in str(graph)
