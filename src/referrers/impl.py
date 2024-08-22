@@ -120,6 +120,7 @@ def get_referrer_graph(
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,
     timeout: Optional[float] = None,
+    single_object_referrer_limit: Optional[int] = 100,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the target object.
@@ -142,6 +143,11 @@ def get_referrer_graph(
         a partial graph is returned. Note that this timeout is approximate, and may not be
         effective if the search is blocked by a long-running operation. The default is `None`
         which means no timeout.
+    :param single_object_referrer_limit: The maximum number of referrers to include in the graph
+        for an individual object instance. If the limit is exceeded, the graph will contain a
+        node containing the text "Referrer limit of N exceedded". Note that this limit is
+        approximate and does not apply to all referrers types. Specifically, it only applies to
+        object references.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         `target_object`.
@@ -158,6 +164,7 @@ def get_referrer_graph(
         module_prefixes=module_prefixes,
         max_untracked_search_depth=max_untracked_search_depth,
         timeout=timeout,
+        single_object_referrer_limit=single_object_referrer_limit,
     )
 
 
@@ -168,6 +175,7 @@ def get_referrer_graph_for_list(
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,
     timeout: Optional[float] = None,
+    single_object_referrer_limit: Optional[int] = 100,
 ) -> ReferrerGraph:
     """
     Gets a graph of referrers for the list of target objects. All objects in the
@@ -191,6 +199,11 @@ def get_referrer_graph_for_list(
         a partial graph is returned. Note that this timeout is approximate, and may not be
         effective if the search is blocked by a long-running operation. The default is `None`
         which means no timeout.
+    :param single_object_referrer_limit: The maximum number of referrers to include in the graph
+        for an individual object instance. If the limit is exceeded, the graph will contain a
+        node containing the text "Referrer limit of N exceedded". Note that this limit is
+        approximate and does not apply to all referrers types. Specifically, it only applies to
+        object references.
 
     :return: An ObjectGraph containing `ReferrerGraphNode`s, representing the referrers of
         the target objects.
@@ -221,8 +234,12 @@ def get_referrer_graph_for_list(
         module_prefixes,
         max_untracked_search_depth=max_untracked_search_depth,
         exclude_object_ids=exclude_object_ids,
+        single_object_referrer_limit=single_object_referrer_limit,
     )
-    return builder.build(max_depth=max_depth, timeout=timeout)
+    return builder.build(
+        max_depth=max_depth,
+        timeout=timeout,
+    )
 
 
 class NameFinder(ABC):
@@ -283,6 +300,18 @@ class _ClosureDetails(_InternalReferrer):
 
     def __str__(self):
         return f"{self.function.__qualname__}.{self.variable_name} ({_TYPE_CLOSURE})"
+
+
+@dataclass
+class _ReferrerLimitReached(_InternalReferrer):
+    num: int
+    limit: Optional[int]
+
+    def unpack(self):
+        return str(self)
+
+    def __str__(self):
+        return f"Referrer limit of {self.limit} exceeded with {self.num} referrers."
 
 
 class LocalVariableNameFinder(NameFinder):
@@ -428,7 +457,12 @@ class ObjectNameFinder(ReferrerNameFinder):
     Gets the names of objects that refer to the target object.
     """
 
-    def __init__(self, excluded_id_set: Optional[Set[int]] = None):
+    def __init__(
+        self,
+        single_object_referrer_limit: Optional[float],
+        excluded_id_set: Optional[Set[int]] = None,
+    ):
+        self._single_object_referrer_limit = single_object_referrer_limit
         self._excluded_id_set = excluded_id_set or set()
 
     def get_names(self, target_object: Any, parent_object: Any) -> Set[str]:
@@ -466,28 +500,40 @@ class ObjectNameFinder(ReferrerNameFinder):
             for key in matching_keys:
                 names.add(f"{type(parent_object).__name__}.{key} (instance attribute)")
         else:
-            # This is the logic for Python <= 3.10
-            grandparents = gc.get_referrers(parent_object)
-            # If the parent has referrers, we need to check if any of them are classes with
-            # instance attributes that refer to the target object (via their __dict__).
-            if grandparents:
-                for grandparent in grandparents:
-                    # If the grandparent is a class, check if the parent is the class's dict.
-                    # If so the grandparent is referring to the target object via an instance
-                    # attribute. This affects the name that we give the target.
-                    if (
-                        hasattr(grandparent, "__dict__")
-                        and grandparent.__dict__ is parent_object
-                    ):
-                        matching_keys = {
-                            key
-                            for key, value in parent_object.items()
-                            if value is target_object
-                        }
-                        for key in matching_keys:
-                            names.add(
-                                f"{type(grandparent).__name__}.{key} (instance attribute)"
-                            )
+            num_referrers = sys.getrefcount(target_object) - 1
+            if _reached_referrer_limit(
+                num_referrers, self._single_object_referrer_limit
+            ):
+                names.add(
+                    str(
+                        _ReferrerLimitReached(
+                            num_referrers, self._single_object_referrer_limit
+                        )
+                    )
+                )
+            else:
+                # This is the logic for Python <= 3.10
+                grandparents = gc.get_referrers(parent_object)
+                # If the parent has referrers, we need to check if any of them are classes with
+                # instance attributes that refer to the target object (via their __dict__).
+                if grandparents:
+                    for grandparent in grandparents:
+                        # If the grandparent is a class, check if the parent is the class's dict.
+                        # If so the grandparent is referring to the target object via an instance
+                        # attribute. This affects the name that we give the target.
+                        if (
+                            hasattr(grandparent, "__dict__")
+                            and grandparent.__dict__ is parent_object
+                        ):
+                            matching_keys = {
+                                key
+                                for key, value in parent_object.items()
+                                if value is target_object
+                            }
+                            for key in matching_keys:
+                                names.add(
+                                    f"{type(grandparent).__name__}.{key} (instance attribute)"
+                                )
         return names
 
     def _get_container_names(self, target_object: Any, parent_object: Any) -> Set[str]:
@@ -606,6 +652,7 @@ class _ReferrerGraphBuilder:
         target_objects: Iterable[Any],
         module_prefixes: Optional[Collection[str]],
         max_untracked_search_depth: int,
+        single_object_referrer_limit: Optional[int],
         exclude_object_ids: Optional[Sequence[int]] = None,
     ):
         if not module_prefixes:
@@ -654,6 +701,8 @@ class _ReferrerGraphBuilder:
             module_prefixes=module_prefixes,
         )
 
+        self._single_object_referrer_limit = single_object_referrer_limit
+
         # Note: when we create the name finders is important because some implementations
         # start to track the objects that are in the environment when they are created.
         self._name_finders = _get_name_finders(module_prefixes)
@@ -661,11 +710,14 @@ class _ReferrerGraphBuilder:
         # Exclude the builder and its attributes from the referrer name finders, since we
         # store a reference to the target objects. Also exclude the target objects container.
         self._referrer_name_finders = _get_referrer_name_finders(
-            excluded_id_set | extra_exclusions
+            excluded_id_set=excluded_id_set | extra_exclusions,
+            single_object_referrer_limit=self._single_object_referrer_limit,
         )
 
     def build(
-        self, max_depth: Optional[int], timeout: Optional[float]
+        self,
+        max_depth: Optional[int],
+        timeout: Optional[float],
     ) -> ReferrerGraph:
         start_time = default_timer()
         graph = nx.DiGraph()
@@ -697,7 +749,10 @@ class _ReferrerGraphBuilder:
 
                 # For each referrer of the target object, find the name(s) of the referrer and
                 # add an edge to the graph for each
-                for referrer_object in self._get_referrers(target_object):
+                for referrer_object in self._get_referrers(
+                    target_object,
+                    single_object_referrer_limit=self._single_object_referrer_limit,
+                ):
                     if not self._is_excluded(referrer_object):
                         referrer_id = id(referrer_object)
                         seen = referrer_id in seen_ids
@@ -732,13 +787,19 @@ class _ReferrerGraphBuilder:
         # so they won't be excluded.
         return inspect.isframe(obj) or inspect.isroutine(obj) or inspect.ismodule(obj)
 
-    def _get_referrers(self, target_object: Any) -> Iterable[Any]:
+    def _get_referrers(
+        self, target_object: Any, single_object_referrer_limit: Optional[int]
+    ) -> Iterable[Any]:
         # If this is an internal object, we need to unpack it to get the real object.
         if isinstance(target_object, _InternalReferrer):
             target_object = target_object.unpack()
-        # This might be empty if the object is not tracked. However, in some cases untracked
-        # objects have referrers, so we need to eliminate duplicates.
-        refs = gc.get_referrers(target_object)
+        num_referrers = sys.getrefcount(target_object) - 1
+        if _reached_referrer_limit(num_referrers, single_object_referrer_limit):
+            refs = [_ReferrerLimitReached(num_referrers, single_object_referrer_limit)]
+        else:
+            # This might be empty if the object is not tracked. However, in some cases untracked
+            # objects have referrers, so we need to eliminate duplicates.
+            refs = gc.get_referrers(target_object)
         ref_ids = {id(ref) for ref in refs}
         for untracked_referrer in self._untracked_objects_referrers.get(
             id(target_object), []
@@ -1015,8 +1076,14 @@ def _get_name_finders(
 
 def _get_referrer_name_finders(
     excluded_id_set: Set[int],
+    single_object_referrer_limit: Optional[float],
 ) -> Sequence[ReferrerNameFinder]:
-    return [ObjectNameFinder(excluded_id_set=excluded_id_set)]
+    return [
+        ObjectNameFinder(
+            single_object_referrer_limit=single_object_referrer_limit,
+            excluded_id_set=excluded_id_set,
+        )
+    ]
 
 
 def _get_global_vars() -> Set[_GlobalVariable]:
@@ -1102,3 +1169,27 @@ def _filter_container(
             for item in extractor_func(copy(container))
             if filter_func(item)
         ]
+
+
+def _reached_referrer_limit(
+    num_referrers: int, single_object_referrer_limit: Optional[int]
+) -> bool:
+    # Immortal objects don't return the real number of referrers in Python >=3.12.
+    # So can't apply the limit to these objects.
+    if _is_probably_immortal(num_referrers) or single_object_referrer_limit is None:
+        return False
+    else:
+        return num_referrers > single_object_referrer_limit
+
+
+def _is_probably_immortal(referrer_count: int):
+    """
+    Guesses whether an object is immortal based on its referrer count.
+
+    According to the Python documentation "Immortal objects have very large refcounts that do
+    not match the actual number of references to the object". However, it's not clear
+    how many references are returned, so we just guess at one billion.
+
+    There does not seem to be any better way to determine if an object is immortal at the moment.
+    """
+    return referrer_count > 1000000000

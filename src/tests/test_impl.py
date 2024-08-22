@@ -3,7 +3,7 @@ import gc
 import sys
 from time import sleep
 import threading
-from typing import Any, Dict, Iterable, Optional, Callable, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
 import pytest
 from networkx import bfs_edges
@@ -185,7 +185,7 @@ class TestObjectNameFinder:
     def test_instance_attribute(self):
         local_ref = TestClass1()
         containing_class = TestClass2(local_ref)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"TestClass2.my_attribute (instance attribute)"}
@@ -194,7 +194,7 @@ class TestObjectNameFinder:
     def test_instance_attribute_frozen_dataclass(self):
         local_ref = TestClass1()
         containing_class = TestClass2Frozen(local_ref)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"TestClass2Frozen.let_it_go (instance attribute)"}
@@ -205,7 +205,7 @@ class TestObjectNameFinder:
         # Construct the containing class with a different object and then change it.
         containing_class = TestClass2(TestClass1())
         containing_class.my_attribute = local_ref
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"TestClass2.my_attribute (instance attribute)"}
@@ -214,7 +214,7 @@ class TestObjectNameFinder:
     def test_multiple_instance_attributes_in_same_class(self):
         local_ref = TestClass1()
         containing_class = TestClass3(local_ref, local_ref)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {
@@ -228,7 +228,9 @@ class TestObjectNameFinder:
         containing_class = TestClass2(local_ref)
         containing_class2 = TestClass2(local_ref)
         for referrer in gc.get_referrers(local_ref):
-            names = ObjectNameFinder().get_names(local_ref, referrer)
+            names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+                local_ref, referrer
+            )
             if referrer is containing_class.__dict__ or referrer is containing_class:
                 assert names == {f"TestClass2.my_attribute (instance attribute)"}
             elif (
@@ -243,7 +245,7 @@ class TestObjectNameFinder:
     def test_dict(self):
         local_ref = TestClass1()
         my_dict = {"mykey": local_ref}
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"dict[mykey]"}
@@ -254,7 +256,9 @@ class TestObjectNameFinder:
         containing_class = TestClass2(local_ref)
         my_dict = {"mykey": local_ref}
         for referrer in gc.get_referrers(local_ref):
-            names = ObjectNameFinder().get_names(local_ref, referrer)
+            names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+                local_ref, referrer
+            )
             if referrer is my_dict:
                 assert names == {f"dict[mykey]"}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
@@ -270,7 +274,7 @@ class TestObjectNameFinder:
         # This is a bit of an odd situation, but it's possible. The __dict__ of one class
         # is referenced by an instance attribute of another class.
         dict_container = DictContainer(containing_class.__dict__)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         # This is perhaps a bit confusing, but we only report the instance attribute
@@ -284,7 +288,7 @@ class TestObjectNameFinder:
     def test_list(self):
         local_ref = TestClass1()
         my_list = [1, local_ref, 3]
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"list[1]"}
@@ -295,7 +299,9 @@ class TestObjectNameFinder:
         containing_class = TestClass2(local_ref)
         my_list = [1, local_ref, 3]
         for referrer in gc.get_referrers(local_ref):
-            names = ObjectNameFinder().get_names(local_ref, referrer)
+            names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+                local_ref, referrer
+            )
             if referrer is my_list:
                 assert names == {f"list[1]"}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
@@ -308,7 +314,7 @@ class TestObjectNameFinder:
     def test_set(self):
         local_ref = TestClass1()
         my_set = {local_ref}
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"set (object)"}
@@ -317,7 +323,7 @@ class TestObjectNameFinder:
     def test_class_dict(self):
         local_ref = TestClass1()
         containing_class = TestClass2(local_ref)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class.__dict__, _one(gc.get_referrers(containing_class.__dict__))
         )
         assert names == {f"TestClass2 (object)"}
@@ -327,7 +333,7 @@ class TestObjectNameFinder:
         local_ref = TestClass1()
         containing_class = TestClass2(local_ref)
         outer_class = TestClass2Container(containing_class)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class, _one(gc.get_referrers(containing_class))
         )
         assert names == {
@@ -341,11 +347,23 @@ class TestObjectNameFinder:
         # These seem to exist in the wild.
         local_ref = TestClass1()
         my_dict = DictWithoutItems(mykey=local_ref)
-        names = ObjectNameFinder().get_names(
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {f"DictWithoutItems (object)"}
         assert my_dict["mykey"] is local_ref
+
+    # This test is only valid for Python versions <=3.10 as newer versions use
+    # a different way of finding object references (avoiding the referrers of grandparents).
+    @pytest.mark.skipif(sys.version_info > (3, 10), reason="requires python <= 3.10")
+    def test_single_object_referrer_limit(self):
+        myobj = TestClass1()
+        otherobjs = [TestClass2(myobj) for _ in range(100)]
+        assert otherobjs is not None
+        names = ObjectNameFinder(single_object_referrer_limit=50).get_names(
+            myobj, next(iter(gc.get_referrers(myobj)))
+        )
+        assert any("Referrer limit of 50 exceeded" in name for name in list(names))
 
 
 class TestModuleLevelNameFinder:
@@ -594,6 +612,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(
             the_obj.instance_var,
         )
+        print(graph)
         assert the_obj.instance_var == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
@@ -719,3 +738,37 @@ class TestGetReferrerGraph:
         nx_graph = graph.to_networkx()
         # The graph should be empty as we should have timed-out immediately.
         assert len(nx_graph.nodes) == 0
+
+    def test_single_object_referrer_limit(self):
+        myobj = TestClass1()
+        otherobjs = [TestClass2(myobj) for _ in range(100)]
+        assert otherobjs is not None
+        graph = referrers.get_referrer_graph(
+            myobj, single_object_referrer_limit=90, exclude_object_ids=[id(otherobjs)]
+        )
+        assert "Referrer limit of 90 exceeded" in str(graph)
+
+    def test_single_object_referrer_limit_with_default(self):
+        myobj = TestClass1()
+        otherobjs = [TestClass2(myobj) for _ in range(120)]
+        assert otherobjs is not None
+        graph = referrers.get_referrer_graph(myobj, exclude_object_ids=[id(otherobjs)])
+        assert "Referrer limit of 100 exceeded" in str(graph)
+
+    def test_single_object_referrer_limit_with_no_limit(self):
+        myobj = TestClass1()
+        otherobjs = [TestClass2(myobj) for _ in range(120)]
+        assert otherobjs is not None
+        graph = referrers.get_referrer_graph(
+            myobj, single_object_referrer_limit=None, exclude_object_ids=[id(otherobjs)]
+        )
+        assert str(graph).count("TestClass2.my_attribute") == 120
+
+    def test_single_object_referrer_limit_with_immortal_object(self):
+        # In Python >= 3.12 immortal objects have a very high reference count so
+        # we need to deal with this somehow.
+        mystr = "hello"
+        graph = referrers.get_referrer_graph(mystr)
+        print(graph)
+        assert "Referrer limit of 100 exceeded" not in str(graph)
+        assert "mystr" in str(graph)

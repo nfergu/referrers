@@ -12,8 +12,6 @@ networkx = ">=2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
-matplotlib = "^3.9"
-pygraphviz = "^1.13"
 
 [build-system]
 requires = ["poetry-core"]
