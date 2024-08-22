@@ -15,6 +15,7 @@ from referrers.impl import (
     ModuleLevelNameFinder,
     ObjectNameFinder,
     _ReferrerGraphBuilder,
+    IMMORTAL_OBJECT_REFCOUNT,
 )
 from tests.testing_modules.module2 import imported_module_variable
 
@@ -762,10 +763,12 @@ class TestGetReferrerGraph:
         )
         assert str(graph).count("TestClass2.my_attribute") == 120
 
+    @pytest.mark.skipif(sys.version_info < (3, 12), reason="requires python >= 3.12")
     def test_single_object_referrer_limit_with_immortal_object(self):
         # In Python >= 3.12 immortal objects have a very high reference count so
         # we need to deal with this somehow.
-        mystr = "hello"
+        mystr = "a"
+        assert sys.getrefcount(mystr) > IMMORTAL_OBJECT_REFCOUNT
         graph = referrers.get_referrer_graph(mystr)
         assert "Referrer limit of 100 exceeded" not in str(graph)
         assert "mystr" in str(graph)

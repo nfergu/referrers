@@ -31,6 +31,8 @@ import networkx as nx
 
 from referrers import networkx_copy
 
+IMMORTAL_OBJECT_REFCOUNT = 1000000000
+
 _PACKAGE_PREFIX = "referrers."
 
 _TYPE_LOCAL = "local"
@@ -1192,4 +1194,4 @@ def _is_probably_immortal(referrer_count: int):
 
     There does not seem to be any better way to determine if an object is immortal at the moment.
     """
-    return referrer_count > 1000000000
+    return referrer_count > IMMORTAL_OBJECT_REFCOUNT
