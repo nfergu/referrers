@@ -767,8 +767,8 @@ class TestGetReferrerGraph:
     def test_single_object_referrer_limit_with_immortal_object(self):
         # In Python >= 3.12 immortal objects have a very high reference count so
         # we need to deal with this somehow.
-        mystr = "a"
-        assert sys.getrefcount(mystr) > IMMORTAL_OBJECT_REFCOUNT
-        graph = referrers.get_referrer_graph(mystr)
+        myvalue = "hello"
+        assert sys.getrefcount(myvalue) > IMMORTAL_OBJECT_REFCOUNT
+        graph = referrers.get_referrer_graph(myvalue)
         assert "Referrer limit of 100 exceeded" not in str(graph)
-        assert "mystr" in str(graph)
+        assert "myvalue" in str(graph)
