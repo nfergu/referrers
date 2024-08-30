@@ -327,6 +327,21 @@ class _DepthLimitReached(_InternalReferrer):
         return f"Maximum depth of {self.limit} exceeded"
 
 
+@dataclass
+class _Timeout(_InternalReferrer):
+    time_taken: float
+    timeout: Optional[float]
+
+    def unpack(self):
+        return str(self)
+
+    def __str__(self):
+        return (
+            f"Timeout of {self.timeout:.2f} seconds exceeded "
+            f"(after {self.time_taken:.2f} seconds)"
+        )
+
+
 class LocalVariableNameFinder(NameFinder):
     """
     Gets the names of local variables that refer to the target object, across the
@@ -744,15 +759,19 @@ class _ReferrerGraphBuilder:
         # Do a depth-first search of the object graph, adding nodes and edges to the graph
         # as we go.
         while stack:
-            if self._reached_timeout(start_time=start_time, timeout=timeout):
-                logger.warning(
-                    f"Reached timeout of {timeout} seconds while building referrer graph. "
-                    f"Returning partial graph."
-                )
-                break
             target_graph_node, target_object, depth = stack.pop()
 
-            if max_depth is None or depth < max_depth:
+            if self._reached_timeout(start_time=start_time, timeout=timeout):
+                time_taken = default_timer() - start_time
+                timeout_object = _Timeout(time_taken=time_taken, timeout=timeout)
+                referrer_nodes = self._get_referrer_nodes(
+                    target_object=target_object,
+                    referrer=timeout_object,
+                    seen=False,
+                )
+                for referrer_graph_node in referrer_nodes:
+                    graph.add_edge(target_graph_node, referrer_graph_node)
+            elif max_depth is None or depth < max_depth:
 
                 # For each non-referrer name pointing to the target object, add an edge to
                 # the graph. Also process any additional referrers that are returned.

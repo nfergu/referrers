@@ -735,9 +735,14 @@ class TestGetReferrerGraph:
     def test_get_referrer_graph_with_timeout(self):
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference, timeout=0.0)
-        nx_graph = graph.to_networkx()
-        # The graph should be empty as we should have timed-out immediately.
-        assert len(nx_graph.nodes) == 0
+        # The graph should have two nodes: one for the target object, and one
+        # telling us we've timed-out.
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert len(node_names) == 2
+        assert any("TestClass1 instance" in node_name for node_name in node_names)
+        assert any(
+            "Timeout of 0.00 seconds exceeded" in node_name for node_name in node_names
+        )
 
     def test_single_object_referrer_limit(self):
         myobj = TestClass1()
