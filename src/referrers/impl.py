@@ -117,7 +117,7 @@ class ReferrerGraph(ABC):
 
 def get_referrer_graph(
     target_object: Any,
-    max_depth: Optional[int] = 10,
+    max_depth: Optional[int] = 20,
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,
@@ -172,7 +172,7 @@ def get_referrer_graph(
 
 def get_referrer_graph_for_list(
     target_objects: List[Any],
-    max_depth: Optional[int] = 10,
+    max_depth: Optional[int] = 20,
     exclude_object_ids: Optional[Sequence[int]] = None,
     module_prefixes: Optional[Collection[str]] = None,
     max_untracked_search_depth: int = 30,

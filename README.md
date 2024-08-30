@@ -166,9 +166,12 @@ to control the performance of the search:
 - `timeout`: The maximum time to spend searching for referrers. If this time is exceeded,
   a partial graph is returned. Note that this timeout is approximate, and may not be
   effective if the search is blocked by a long-running operation. The default is `None`
-  which means no timeout.
-- `max_depth`: The maximum depth to search for referrers. The default is 10. Specify
+  which means no timeout. If the timeout is exceeded, the graph will contain a node
+  containing the text "Timeout of N seconds exceeded".
+- `max_depth`: The maximum depth to search for referrers. The default is 20. Specify
   `None` to search to unlimited depth (but be careful with this: it may take a long time).
+  If the maximum depth is exceeded, the graph will contain a node containing the text
+  "Maximum depth of N exceeded".
 - `max_untracked_search_depth`: The maximum depth to search for referrers of untracked
   objects. This is the depth that referents will be searched from the roots (locals and
   globals). The default is 30. If you are missing referrers of untracked objects, you
