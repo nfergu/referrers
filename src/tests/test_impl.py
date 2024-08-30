@@ -549,6 +549,7 @@ class TestGetReferrerGraph:
         ]
         link_nodes = [node for node in nx_graph.nodes if "Link (object)" in node.name]
         assert len(instance_attribute_nodes) + len(link_nodes) == 12
+        assert "Maximum depth of 12 exceeded" in str(graph)
 
     def test_untracked_container_object(self):
         # In this case the_dict is not tracked by the garbage collector because it

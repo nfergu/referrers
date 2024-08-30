@@ -316,6 +316,17 @@ class _ReferrerLimitReached(_InternalReferrer):
         return f"Referrer limit of {self.limit} exceeded with {self.num} referrers."
 
 
+@dataclass
+class _DepthLimitReached(_InternalReferrer):
+    limit: Optional[int]
+
+    def unpack(self):
+        return str(self)
+
+    def __str__(self):
+        return f"Maximum depth of {self.limit} exceeded"
+
+
 class LocalVariableNameFinder(NameFinder):
     """
     Gets the names of local variables that refer to the target object, across the
@@ -773,6 +784,15 @@ class _ReferrerGraphBuilder:
                                 stack.append(
                                     (referrer_graph_node, referrer_object, depth + 1)
                                 )
+            else:
+                limit_exceeded_object = _DepthLimitReached(limit=max_depth)
+                referrer_nodes = self._get_referrer_nodes(
+                    target_object=target_object,
+                    referrer=limit_exceeded_object,
+                    seen=False,
+                )
+                for referrer_graph_node in referrer_nodes:
+                    graph.add_edge(target_graph_node, referrer_graph_node)
 
         return _ReferrerGraph(graph)
 
