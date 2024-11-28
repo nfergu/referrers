@@ -1,10 +1,11 @@
 [tool.poetry]
 name = "referrers"
-version = "0.10.1"
+version = "0.11.0"
 description = "Finds the graph of referrers for a Python object"
 authors = ["Neil Ferguson"]
 readme = "README.md"
 repository = "https://github.com/nfergu/referrers"
+license = {file = "LICENSE"}
 
 [tool.poetry.dependencies]
 python = ">=3.8"
