@@ -770,9 +770,12 @@ class TestGetReferrerGraph:
         assert str(graph).count("TestClass2.my_attribute") == 120
 
     @pytest.mark.skipif(sys.version_info < (3, 12), reason="requires python >= 3.12")
+    @pytest.mark.skipif(
+        sys.version_info > (3, 12, 3), reason="requires python <= 3.12.3"
+    )
     def test_single_object_referrer_limit_with_immortal_object(self):
-        # In Python >= 3.12 immortal objects have a very high reference count so
-        # we need to deal with this somehow.
+        # In early versions of Python 3.12 immortal objects have a very high reference
+        # count so we need to deal with this somehow.
         myvalue = "hello"
         assert sys.getrefcount(myvalue) > IMMORTAL_OBJECT_REFCOUNT
         graph = referrers.get_referrer_graph(myvalue)
