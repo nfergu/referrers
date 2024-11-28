@@ -5,7 +5,7 @@ description = "Finds the graph of referrers for a Python object"
 authors = ["Neil Ferguson"]
 readme = "README.md"
 repository = "https://github.com/nfergu/referrers"
-license = "LICENSE"
+license = {file = "LICENSE"}
 
 [tool.poetry.dependencies]
 python = ">=3.8"
