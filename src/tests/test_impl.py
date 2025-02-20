@@ -1,6 +1,7 @@
 import dataclasses
 import gc
 import sys
+import weakref
 from time import sleep
 import threading
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple
@@ -781,3 +782,21 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(myvalue)
         assert "Referrer limit of 100 exceeded" not in str(graph)
         assert "myvalue" in str(graph)
+
+    def test_weakref_proxy_with_deleted_ref(self):
+        def my_function():
+            return 1
+
+        _ = weakref.proxy(my_function)
+        del my_function
+        the_reference = TestClass1()
+        graph = referrers.get_referrer_graph(the_reference)
+        nx_graph = graph.to_networkx()
+        roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
+        assert ["TestClass1 instance"] == [root.name for root in roots]
+        bfs_names = [
+            (edge[0].name, edge[1].name) for edge in bfs_edges(nx_graph, source=_one(roots))
+        ]
+        assert bfs_names == [
+            ("TestClass1 instance", "test_weakref_proxy_with_deleted_ref.the_reference (local)"),
+        ]

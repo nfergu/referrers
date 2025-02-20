@@ -1071,28 +1071,33 @@ class _ReferrerGraphBuilder:
         ] = collections.defaultdict(list)
         all_closure_ids = set()
         for possible_function in gc.get_objects():
-            if inspect.isfunction(possible_function) or inspect.ismethod(
-                possible_function
-            ):
-                try:
-                    closure_vars = inspect.getclosurevars(possible_function)
-                except TypeError:
-                    # It's not clear why, but some things that claim to be functions
-                    # return a TypeError with "is not a Python function" here, so we
-                    # just skip them.
-                    continue
-                except ValueError:
-                    # The inspect.getclosurevars function raises a ValueError with
-                    # "Cell is empty" in some cases. it's not clear how to avoid this, so
-                    # we just skip these cases.
-                    continue
-                for var_name, var_value in chain(
-                    closure_vars.nonlocals.items(), closure_vars.globals.items()
+            try:
+                if inspect.isfunction(possible_function) or inspect.ismethod(
+                    possible_function
                 ):
-                    id_to_enclosing_closure[id(var_value)].append(
-                        _ClosureDetails(possible_function, var_name)
-                    )
-                    all_closure_ids.add(id(possible_function))
+                    try:
+                        closure_vars = inspect.getclosurevars(possible_function)
+                    except TypeError:
+                        # It's not clear why, but some things that claim to be functions
+                        # return a TypeError with "is not a Python function" here, so we
+                        # just skip them.
+                        continue
+                    except ValueError:
+                        # The inspect.getclosurevars function raises a ValueError with
+                        # "Cell is empty" in some cases. it's not clear how to avoid this, so
+                        # we just skip these cases.
+                        continue
+                    for var_name, var_value in chain(
+                        closure_vars.nonlocals.items(), closure_vars.globals.items()
+                    ):
+                        id_to_enclosing_closure[id(var_value)].append(
+                            _ClosureDetails(possible_function, var_name)
+                        )
+                        all_closure_ids.add(id(possible_function))
+            except ReferenceError as e:
+                # This can happen if the object is a weak reference proxy where the underlying
+                # object has been garbage collected. We just skip these cases.
+                continue
         return id_to_enclosing_closure
 
 
