@@ -112,15 +112,15 @@ class TestLocalVariableNameFinder:
     def test_calling_frame(self):
         ref1 = TestClass1()
         names = LocalVariableNameFinder().get_names(ref1)
-        assert names == {"test_calling_frame.ref1 (local)"}
+        assert names == {"TestLocalVariableNameFinder.test_calling_frame.ref1 (local)"}
 
     def test_calling_frame_multiple(self):
         ref1 = TestClass1()
         ref2 = ref1
         names = LocalVariableNameFinder().get_names(ref1)
         assert names == {
-            "test_calling_frame_multiple.ref1 (local)",
-            "test_calling_frame_multiple.ref2 (local)",
+            "TestLocalVariableNameFinder.test_calling_frame_multiple.ref1 (local)",
+            "TestLocalVariableNameFinder.test_calling_frame_multiple.ref2 (local)",
         }
         assert ref1 is ref2
 
@@ -128,14 +128,14 @@ class TestLocalVariableNameFinder:
         ref1 = TestClass1()
         ref2 = TestClass1()
         names = LocalVariableNameFinder().get_names(ref1)
-        assert names == {"test_calling_frame_two_classes.ref1 (local)"}
+        assert names == {"TestLocalVariableNameFinder.test_calling_frame_two_classes.ref1 (local)"}
         assert ref1 is not ref2
 
     def test_calling_frame_assert_in_function(self):
         top_level_ref = TestClass1()
         stack_frames_namer_assert_in_function(
             top_level_ref,
-            name="test_calling_frame_assert_in_function.top_level_ref (local)",
+            name="TestLocalVariableNameFinder.test_calling_frame_assert_in_function.top_level_ref (local)",
         )
 
     def test_nothing_in_stack_frames(self):
@@ -154,8 +154,8 @@ class TestLocalVariableNameFinder:
         thread.join()
         # We should get names from all threads, including the main thread.
         assert names == {
-            "test_calling_frame_in_separate_thread.my_ref (local)",
-            "target_function.passed_ref_to_target_function (local)",
+            "TestLocalVariableNameFinder.test_calling_frame_in_separate_thread.my_ref (local)",
+            "TargetClass.target_function.passed_ref_to_target_function (local)",
         }
 
     def test_also_in_instance_attribute(self):
@@ -164,7 +164,7 @@ class TestLocalVariableNameFinder:
         names = LocalVariableNameFinder().get_names(ref1)
         # The StackFramesNamer should not find the instance attribute, because it only looks at
         # local variables.
-        assert names == {"test_also_in_instance_attribute.ref1 (local)"}
+        assert names == {"TestLocalVariableNameFinder.test_also_in_instance_attribute.ref1 (local)"}
         assert containing_class.my_attribute is ref1
 
     def test_interned_ints(self):
@@ -176,8 +176,8 @@ class TestLocalVariableNameFinder:
         # This isn't particularly desirable behaviour, since it's a bit unintuitive, but
         # there's not much we can do about it.
         assert names == {
-            "test_interned_ints.ref1 (local)",
-            "test_interned_ints.ref2 (local)",
+            "TestLocalVariableNameFinder.test_interned_ints.ref1 (local)",
+            "TestLocalVariableNameFinder.test_interned_ints.ref2 (local)",
         }
         assert ref1 is ref2
         assert ref1 is not ref3
@@ -190,7 +190,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2.my_attribute (instance attribute)"}
+        assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
         assert containing_class.my_attribute is local_ref
 
     def test_instance_attribute_frozen_dataclass(self):
@@ -199,7 +199,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2Frozen.let_it_go (instance attribute)"}
+        assert names == {f"tests.test_impl.TestClass2Frozen.let_it_go (instance attribute)"}
         assert containing_class.let_it_go is local_ref
 
     def test_instance_attribute_changed(self):
@@ -210,7 +210,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2.my_attribute (instance attribute)"}
+        assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
         assert containing_class.my_attribute is local_ref
 
     def test_multiple_instance_attributes_in_same_class(self):
@@ -220,8 +220,8 @@ class TestObjectNameFinder:
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {
-            f"TestClass3.my_attribute (instance attribute)",
-            f"TestClass3._my_attribute2 (instance attribute)",
+            f"tests.test_impl.TestClass3.my_attribute (instance attribute)",
+            f"tests.test_impl.TestClass3._my_attribute2 (instance attribute)",
         }
         assert containing_class.my_attribute is local_ref
 
@@ -234,11 +234,11 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
             elif (
                 referrer is containing_class2.__dict__ or referrer is containing_class2
             ):
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -264,7 +264,7 @@ class TestObjectNameFinder:
             if referrer is my_dict:
                 assert names == {f"dict[mykey]"}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -282,7 +282,7 @@ class TestObjectNameFinder:
         # This is perhaps a bit confusing, but we only report the instance attribute
         # of the containing class, not the separate dict.
         assert names == {
-            f"TestClass2.my_attribute (instance attribute)",
+            f"tests.test_impl.TestClass2.my_attribute (instance attribute)",
         }
         assert containing_class.my_attribute is local_ref
         assert dict_container.my_dict is containing_class.__dict__
@@ -307,7 +307,7 @@ class TestObjectNameFinder:
             if referrer is my_list:
                 assert names == {f"list[1]"}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {f"tests.test_impl.TestClass2.my_attribute (instance attribute)"}
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -328,7 +328,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class.__dict__, _one(gc.get_referrers(containing_class.__dict__))
         )
-        assert names == {f"TestClass2 (object)"}
+        assert names == {f"tests.test_impl.TestClass2 (object)"}
         assert containing_class.my_attribute is local_ref
 
     def test_outer_container(self):
@@ -339,7 +339,7 @@ class TestObjectNameFinder:
             containing_class, _one(gc.get_referrers(containing_class))
         )
         assert names == {
-            f"TestClass2Container.contained_attribute (instance attribute)"
+            f"tests.test_impl.TestClass2Container.contained_attribute (instance attribute)"
         }
         assert containing_class.my_attribute is local_ref
         assert outer_class.contained_attribute is containing_class
@@ -352,7 +352,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"DictWithoutItems (object)"}
+        assert names == {f"tests.test_impl.DictWithoutItems (object)"}
         assert my_dict["mykey"] is local_ref
 
     # This test is only valid for Python versions <=3.10 as newer versions use
@@ -464,13 +464,13 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(the_reference)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["TestClass1 instance"] == [root.name for root in roots]
+        assert ["tests.test_impl.TestClass1 instance"] == [root.name for root in roots]
         bfs_names = [
             (edge[0].name, edge[1].name)
             for edge in bfs_edges(nx_graph, source=_one(roots))
         ]
         assert bfs_names == [
-            ("TestClass1 instance", "test_get_referrer_graph.the_reference (local)"),
+            ("tests.test_impl.TestClass1 instance", "TestGetReferrerGraph.test_get_referrer_graph.the_reference (local)"),
         ]
 
     def test_get_referrer_graph_for_list(self):
@@ -479,7 +479,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph_for_list([the_reference, the_reference2])
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert {"TestClass1 instance", "TestClass2 instance"} == set(
+        assert {"tests.test_impl.TestClass1 instance", "tests.test_impl.TestClass2 instance"} == set(
             root.name for root in roots
         )
         for root in roots:
@@ -487,15 +487,15 @@ class TestGetReferrerGraph:
                 (edge[0].name, edge[1].name)
                 for edge in bfs_edges(nx_graph, source=root)
             ]
-            if root.name == "TestClass1 instance":
+            if root.name == "tests.test_impl.TestClass1 instance":
                 expected_names = [
                     (
-                        "TestClass1 instance",
-                        "TestClass2.my_attribute (instance attribute)",
+                        "tests.test_impl.TestClass1 instance",
+                        "tests.test_impl.TestClass2.my_attribute (instance attribute)",
                     ),
                     (
-                        "TestClass1 instance",
-                        "test_get_referrer_graph_for_list.the_reference (local)",
+                        "tests.test_impl.TestClass1 instance",
+                        "TestGetReferrerGraph.test_get_referrer_graph_for_list.the_reference (local)",
                     ),
                 ]
                 # In Python 3.10 and earlier there will be an extra node in the graph.
@@ -504,16 +504,16 @@ class TestGetReferrerGraph:
                 if sys.version_info[1] <= 10:
                     expected_names.append(
                         (
-                            "TestClass2.my_attribute (instance attribute)",
-                            "TestClass2 (object)",
+                            "tests.test_impl.TestClass2.my_attribute (instance attribute)",
+                            "tests.test_impl.TestClass2 (object)",
                         )
                     )
                 assert set(bfs_names) == set(expected_names)
-            elif root.name == "TestClass2 instance":
+            elif root.name == "tests.test_impl.TestClass2 instance":
                 assert bfs_names == [
                     (
-                        "TestClass2 instance",
-                        "test_get_referrer_graph_for_list.the_reference2 (local)",
+                        "tests.test_impl.TestClass2 instance",
+                        "TestGetReferrerGraph.test_get_referrer_graph_for_list.the_reference2 (local)",
                     )
                 ]
             else:
@@ -678,11 +678,11 @@ class TestGetReferrerGraph:
         assert closure is not None
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["TestClass1 instance"] == [root.name for root in roots]
+        assert ["tests.test_impl.TestClass1 instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            "tests.test_impl.get_print_input_closure.<locals>.print_input.input_val (closure)"
             in node_name
             for node_name in node_names
         ), str(graph)
@@ -698,11 +698,11 @@ class TestGetReferrerGraph:
         assert closure_holder.closure is closure
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["TestClass1 instance"] == [root.name for root in roots]
+        assert ["tests.test_impl.TestClass1 instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure_holder variable should be in the graph
         assert any(
-            "test_get_referrer_graph_for_closure_referenced_by_object.closure_holder"
+            "TestGetReferrerGraph.test_get_referrer_graph_for_closure_referenced_by_object.closure_holder"
             in node_name
             for node_name in node_names
         ), str(graph)
@@ -713,11 +713,11 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(module_level_variable)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
-        assert ["TestClass1 instance"] == [root.name for root in roots]
+        assert ["tests.test_impl.TestClass1 instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "get_print_input_closure.<locals>.print_input.input_val (closure)"
+            "tests.test_impl.get_print_input_closure.<locals>.print_input.input_val (closure)"
             in node_name
             for node_name in node_names
         ), str(graph)
@@ -740,7 +740,7 @@ class TestGetReferrerGraph:
         # telling us we've timed-out.
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert len(node_names) == 2
-        assert any("TestClass1 instance" in node_name for node_name in node_names)
+        assert any("tests.test_impl.TestClass1 instance" in node_name for node_name in node_names)
         assert any(
             "Timeout of 0.00 seconds exceeded" in node_name for node_name in node_names
         )
@@ -768,7 +768,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(
             myobj, single_object_referrer_limit=None, exclude_object_ids=[id(otherobjs)]
         )
-        assert str(graph).count("TestClass2.my_attribute") == 120
+        assert str(graph).count("tests.test_impl.TestClass2.my_attribute") == 120
 
     @pytest.mark.skipif(sys.version_info < (3, 12), reason="requires python >= 3.12")
     @pytest.mark.skipif(

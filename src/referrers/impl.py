@@ -47,6 +47,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def full_typename(t: TypeVar):
+    m = t.__module__
+    if m and m != 'builtins':
+        return f'{t.__module__}.{t.__name__}'
+    return t.__name__
+
+
 @dataclass(frozen=True)
 class ReferrerGraphNode:
     """
@@ -301,7 +308,7 @@ class _ClosureDetails(_InternalReferrer):
         return self.function
 
     def __str__(self):
-        return f"{self.function.__qualname__}.{self.variable_name} ({_TYPE_CLOSURE})"
+        return f"{self.function.__module__}.{self.function.__qualname__}.{self.variable_name} ({_TYPE_CLOSURE})"
 
 
 @dataclass
@@ -390,7 +397,7 @@ class LocalVariableNameFinder(NameFinder):
             frame.f_locals,
             extractor_func=lambda x: x.items(),
             filter_func=lambda x: x[1] is target_object,
-            selector_func=lambda x: f"{frame.f_code.co_name}.{x[0]} ({_TYPE_LOCAL})",
+            selector_func=lambda x: f"{frame.f_code.co_qualname}.{x[0]} ({_TYPE_LOCAL})",
         )
 
     def get_type(self) -> str:
@@ -526,7 +533,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                 if value is target_object
             }
             for key in matching_keys:
-                names.add(f"{type(parent_object).__name__}.{key} (instance attribute)")
+                names.add(f"{full_typename(type(parent_object))}.{key} (instance attribute)")
         else:
             num_referrers = sys.getrefcount(target_object) - 1
             if _reached_referrer_limit(
@@ -560,7 +567,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                             }
                             for key in matching_keys:
                                 names.add(
-                                    f"{type(grandparent).__name__}.{key} (instance attribute)"
+                                    f"{full_typename(type(grandparent))}.{key} (instance attribute)"
                                 )
         return names
 
@@ -575,7 +582,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                         parent_object,
                         extractor_func=lambda x: x.items(),
                         filter_func=lambda x: x[1] is target_object,
-                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                        selector_func=lambda x: f"{full_typename(type(parent_object))}[{x[0]}]",
                     )
                 )
             elif isinstance(
@@ -587,7 +594,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                         parent_object,
                         extractor_func=lambda x: enumerate(x),
                         filter_func=lambda x: x[1] is target_object,
-                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                        selector_func=lambda x: f"{full_typename(type(parent_object))}[{x[0]}]",
                     )
                 )
         except Exception as e:
@@ -602,7 +609,7 @@ class ObjectNameFinder(ReferrerNameFinder):
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
-            names.add(f"{type(parent_object).__name__} (object)")
+            names.add(f"{full_typename(type(parent_object))} (object)")
         return names
 
     def get_type(self) -> str:
@@ -856,7 +863,7 @@ class _ReferrerGraphBuilder:
     def _get_initial_target_node(
         self, target_object: Any
     ) -> Tuple[ReferrerGraphNode, Any, int]:
-        name = f"{type(target_object).__name__} instance"
+        name = f"{full_typename(type(target_object))} instance"
         return (
             ReferrerGraphNode(name=name, id=id(target_object), type="object"),
             target_object,
