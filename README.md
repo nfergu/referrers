@@ -35,10 +35,18 @@ in certain cases, and should not be used in performance-critical code.
 
 ## Installation
 
-Install using pip:
+## Installation
+
+Install using [uv](https://github.com/astral-sh/uv):
 
 ```bash
-pip3 install referrers
+uv pip install -r requirements.txt
+```
+
+For development dependencies (including testing):
+
+```bash
+uv pip install -r requirements-dev.txt
 ```
 
 ## Usage
