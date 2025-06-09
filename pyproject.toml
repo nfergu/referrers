@@ -5,7 +5,7 @@ description = "Finds the graph of referrers for a Python object"
 authors = [{ name = "Neil Ferguson" }]
 requires-python = ">=3.8"
 readme = "README.md"
-license = "Apache-2.0"
+license = {text = "Apache-2.0"}
 dependencies = ["networkx>=2.4"]
 
 [project.urls]
