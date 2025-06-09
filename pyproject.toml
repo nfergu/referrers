@@ -1,19 +1,15 @@
-[tool.poetry]
+[project]
 name = "referrers"
 version = "0.11.1"
 description = "Finds the graph of referrers for a Python object"
-authors = ["Neil Ferguson"]
-license = "Apache-2.0"
+authors = [{ name = "Neil Ferguson" }]
+requires-python = ">=3.8"
 readme = "README.md"
-repository = "https://github.com/nfergu/referrers"
+license = "Apache-2.0"
+dependencies = ["networkx>=2.4"]
 
-[tool.poetry.dependencies]
-python = ">=3.8"
-networkx = ">=2.4"
+[project.urls]
+Repository = "https://github.com/nfergu/referrers"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.1.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[dependency-groups]
+dev = ["pytest>=8.1.1,<9"]
