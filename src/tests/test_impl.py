@@ -457,6 +457,12 @@ def _get_nested_tuples() -> Tuple[Tuple[Tuple[Tuple[str]]]]:
     assert not gc.is_tracked(d)
     return d
 
+class HeldClass:
+    def __init__(self, a: int):
+        self._a = a
+
+class ClassAttributeHolder:
+    class_attr: HeldClass = None
 
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
@@ -800,3 +806,36 @@ class TestGetReferrerGraph:
         assert bfs_names == [
             ("TestClass1 instance", "test_weakref_proxy_with_deleted_ref.the_reference (local)"),
         ]
+
+    def test_class_attribute(self):
+        held_instance = HeldClass(a=23)
+        ClassAttributeHolder.class_attr = held_instance
+        graph = referrers.get_referrer_graph(held_instance)
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "ClassAttributeHolder"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+        assert any(
+            "dict[class_attr]"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+
+    def test_class_attribute_in_instance(self):
+        held_instance = HeldClass(a=23)
+        holder = ClassAttributeHolder()
+        holder.class_attr = held_instance
+        graph = referrers.get_referrer_graph(held_instance)
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        assert any(
+            "ClassAttributeHolder.class_attr"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
+        assert any(
+            "test_class_attribute_in_instance.holder (local)"
+            in node_name
+            for node_name in node_names
+        ), str(graph)
