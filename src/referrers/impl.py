@@ -41,9 +41,7 @@ _TYPE_GLOBAL = "global"
 _TYPE_OBJECT = "object"
 _TYPE_MODULE_VARIABLE = "module variable"
 
-logging.basicConfig(
-    format="[%(levelname)s] %(asctime)s %(message)s", level=logging.INFO
-)
+logging.basicConfig(format="[%(levelname)s] %(asctime)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -71,29 +69,22 @@ class ReferrerGraphNode:
     variable, this would be "local".
     """
 
-    is_cycle: bool = False
+    is_target: bool = False
     """
-    Whether the referrer is part of a cycle in the graph. If this is `True`, the referrer
-    will be the last node in a branch of the graph.
+    Whether this node is a target (the object for which we are trying to find referrers).
+    This attribute is not include in equality comparisons and the hash.
     """
 
     def __str__(self):
-        return f"{self.name} (id={self.id})" + (
-            " (circular ref)" if self.is_cycle else ""
-        )
+        return f"{self.name} (id={self.id})" + (" (target)" if self.is_target else "")
 
-    def __eq__(self, other):
-        return (
-            isinstance(other, ReferrerGraphNode)
-            and self.name == other
-            and self.id == other.id
-        )
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, ReferrerGraphNode):
+            return False
+        return self.name == other.name and self.id == other.id and self.type == other.type
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __hash__(self):
-        return hash((self.name, self.id))
+    def __hash__(self) -> int:
+        return hash((self.name, self.id, self.type))
 
 
 class ReferrerGraph(ABC):
@@ -521,17 +512,13 @@ class ObjectNameFinder(ReferrerNameFinder):
         if hasattr(parent_object, "__dict__"):
             # This is the logic for Python > 3.10
             matching_keys = {
-                key
-                for key, value in parent_object.__dict__.items()
-                if value is target_object
+                key for key, value in parent_object.__dict__.items() if value is target_object
             }
             for key in matching_keys:
                 names.add(f"{type(parent_object).__name__}.{key} (instance attribute)")
         else:
             num_referrers = sys.getrefcount(target_object) - 1
-            if _reached_referrer_limit(
-                num_referrers, self._single_object_referrer_limit
-            ):
+            if _reached_referrer_limit(num_referrers, self._single_object_referrer_limit):
                 names.add(
                     str(
                         _ReferrerLimitReached(
@@ -630,9 +617,7 @@ class ModuleLevelNameFinder(NameFinder):
             that is not part of the `referrers` package.
         """
         self._modules = [
-            module
-            for name, module in sys.modules.items()
-            if name.startswith(module_prefix)
+            module for name, module in sys.modules.items() if name.startswith(module_prefix)
         ]
         self._global_vars = _get_global_vars()
 
@@ -646,9 +631,7 @@ class ModuleLevelNameFinder(NameFinder):
                         and _GlobalVariable(var_name, id(var_value), id(module))
                         not in self._global_vars
                     ):
-                        names.add(
-                            f"{module.__name__}.{var_name} ({_TYPE_MODULE_VARIABLE})"
-                        )
+                        names.add(f"{module.__name__}.{var_name} ({_TYPE_MODULE_VARIABLE})")
         return names
 
     def get_type(self) -> str:
@@ -662,12 +645,33 @@ class _ReferrerGraph(ReferrerGraph):
     def __str__(self):
         # Use a copy of the networkx generate_network_text function to avoid depending on
         # a narrow range of networkx versions.
+        printable_graph = self._to_printable_graph()
         return "\n" + "\n".join(
-            line for line in networkx_copy.generate_network_text(self._graph)
+            line for line in networkx_copy.generate_network_text(printable_graph)
         )
 
     def to_networkx(self) -> nx.DiGraph:
         return self._graph
+
+    def _to_printable_graph(self) -> nx.DiGraph:
+        new_graph = nx.DiGraph()
+        seen: set[ReferrerGraphNode] = set()
+        # Make a string representation of the graph, breaking any cycles.
+        for u, v in self._graph.edges():
+            if isinstance(u, ReferrerGraphNode) and isinstance(v, ReferrerGraphNode):
+                # Break any cycles in graph and add a "(circular ref)" suffix to the node.
+                u_str = str(u)
+                v_str = str(v)
+                if v in seen:
+                    v_str = v_str + " (cycle)"
+                elif self._graph.out_degree(v) == 0:
+                    v_str = v_str + " (root)"
+                new_graph.add_edge(u_str, v_str)
+                seen.add(u)
+                seen.add(v)
+            else:
+                raise ValueError(f"Unexpected type: {type(u)} or {type(v)}")
+        return new_graph
 
 
 class _ReferrerGraphBuilder:
@@ -687,9 +691,7 @@ class _ReferrerGraphBuilder:
             stack_frames = inspect.stack()
             for frame_info in stack_frames:
                 frame_module = inspect.getmodule(frame_info.frame)
-                if frame_module and not frame_module.__name__.startswith(
-                    _PACKAGE_PREFIX
-                ):
+                if frame_module and not frame_module.__name__.startswith(_PACKAGE_PREFIX):
                     # Use the top-level package of the calling code as the module prefix
                     # (with a trailing dot). For example, if the calling code is in a module
                     # called my_module.do_thing, the module prefix would be "my_module.".
@@ -800,9 +802,7 @@ class _ReferrerGraphBuilder:
                             # relationship though.
                             if not seen:
                                 seen_ids.add(referrer_id)
-                                stack.append(
-                                    (referrer_graph_node, referrer_object, depth + 1)
-                                )
+                                stack.append((referrer_graph_node, referrer_object, depth + 1))
             else:
                 limit_exceeded_object = _DepthLimitReached(limit=max_depth)
                 referrer_nodes = self._get_referrer_nodes(
@@ -842,9 +842,7 @@ class _ReferrerGraphBuilder:
             # objects have referrers, so we need to eliminate duplicates.
             refs = gc.get_referrers(target_object)
         ref_ids = {id(ref) for ref in refs}
-        for untracked_referrer in self._untracked_objects_referrers.get(
-            id(target_object), []
-        ):
+        for untracked_referrer in self._untracked_objects_referrers.get(id(target_object), []):
             if id(untracked_referrer) not in ref_ids:
                 refs.append(untracked_referrer)
         closures = self._id_to_enclosing_closure.get(id(target_object), [])
@@ -856,9 +854,9 @@ class _ReferrerGraphBuilder:
     def _get_initial_target_node(
         self, target_object: Any
     ) -> Tuple[ReferrerGraphNode, Any, int]:
-        name = f"{type(target_object).__name__} instance"
+        name = f"{type(target_object).__name__} (object)"
         return (
-            ReferrerGraphNode(name=name, id=id(target_object), type="object"),
+            ReferrerGraphNode(name=name, id=id(target_object), type="object", is_target=True),
             target_object,
             0,
         )
@@ -874,7 +872,6 @@ class _ReferrerGraphBuilder:
                         name=name,
                         id=id(referrer),
                         type=finder.get_type(),
-                        is_cycle=seen,
                     )
                 )
         return nodes
@@ -887,9 +884,7 @@ class _ReferrerGraphBuilder:
             # (this is maybe a bit weird?).
             for name in names:
                 nodes.add(
-                    ReferrerGraphNode(
-                        name=name, id=id(target_object), type=finder.get_type()
-                    )
+                    ReferrerGraphNode(name=name, id=id(target_object), type=finder.get_type())
                 )
         return nodes
 
@@ -899,7 +894,7 @@ class _ReferrerGraphBuilder:
         excluded_id_set: Set[int],
         max_depth: int,
         module_prefixes: Collection[str],
-    ) -> Tuple[Mapping[id, List[Any]], Set[int]]:
+    ) -> Tuple[Mapping[int, List[Any]], Set[int]]:
         """
         Builds a mapping of object IDs to referrers for objects that are not tracked by the
         garbage collector, and returns this along with extra IDs to exclude.
@@ -1066,9 +1061,9 @@ class _ReferrerGraphBuilder:
     def _get_closure_functions(
         self,
     ) -> Dict[int, List[_ClosureDetails]]:
-        id_to_enclosing_closure: Dict[
-            int, List[_ClosureDetails]
-        ] = collections.defaultdict(list)
+        id_to_enclosing_closure: Dict[int, List[_ClosureDetails]] = collections.defaultdict(
+            list
+        )
         all_closure_ids = set()
         for possible_function in gc.get_objects():
             try:
@@ -1152,9 +1147,7 @@ def _get_global_vars() -> Set[_GlobalVariable]:
             for var_name, var_value in global_tuples:
                 module = inspect.getmodule(var_value)
                 if module:
-                    global_vars.add(
-                        _GlobalVariable(var_name, id(var_value), id(module))
-                    )
+                    global_vars.add(_GlobalVariable(var_name, id(var_value), id(module)))
                 else:
                     global_vars.add(_GlobalVariable(var_name, id(var_value), None))
     return global_vars
@@ -1198,11 +1191,7 @@ def _filter_container(
     :return: The selected items.
     """
     try:
-        return [
-            selector_func(item)
-            for item in extractor_func(container)
-            if filter_func(item)
-        ]
+        return [selector_func(item) for item in extractor_func(container) if filter_func(item)]
     except RuntimeError as e:
         # If we get a RuntimeError, it's likely that the iterable is being modified while
         # we're iterating over it. In this case we make a copy of the container and try again.
