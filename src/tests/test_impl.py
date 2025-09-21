@@ -1,5 +1,7 @@
 import dataclasses
 import gc
+import io
+import re
 import sys
 import weakref
 from time import sleep
@@ -235,9 +237,7 @@ class TestObjectNameFinder:
             )
             if referrer is containing_class.__dict__ or referrer is containing_class:
                 assert names == {f"TestClass2.my_attribute (instance attribute)"}
-            elif (
-                referrer is containing_class2.__dict__ or referrer is containing_class2
-            ):
+            elif referrer is containing_class2.__dict__ or referrer is containing_class2:
                 assert names == {f"TestClass2.my_attribute (instance attribute)"}
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
@@ -338,9 +338,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class, _one(gc.get_referrers(containing_class))
         )
-        assert names == {
-            f"TestClass2Container.contained_attribute (instance attribute)"
-        }
+        assert names == {f"TestClass2Container.contained_attribute (instance attribute)"}
         assert containing_class.my_attribute is local_ref
         assert outer_class.contained_attribute is containing_class
 
@@ -377,9 +375,7 @@ class TestModuleLevelNameFinder:
         # without importing it (we also rely on the fact that there are no other module-level
         # references to 178 in this program).
         names = ModuleLevelNameFinder("tests.testing_modules").get_names(178)
-        assert names == {
-            "tests.testing_modules.module1.module_variable (module variable)"
-        }
+        assert names == {"tests.testing_modules.module1.module_variable (module variable)"}
 
     def test_non_imported_variable(self):
         # Here we're testing the case where we have imported a module, but we have not
@@ -457,12 +453,15 @@ def _get_nested_tuples() -> Tuple[Tuple[Tuple[Tuple[str]]]]:
     assert not gc.is_tracked(d)
     return d
 
+
 class HeldClass:
     def __init__(self, a: int):
         self._a = a
 
+
 class ClassAttributeHolder:
     class_attr: HeldClass = None
+
 
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
@@ -472,12 +471,54 @@ class TestGetReferrerGraph:
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 instance"] == [root.name for root in roots]
         bfs_names = [
-            (edge[0].name, edge[1].name)
-            for edge in bfs_edges(nx_graph, source=_one(roots))
+            (edge[0].name, edge[1].name) for edge in bfs_edges(nx_graph, source=_one(roots))
         ]
         assert bfs_names == [
             ("TestClass1 instance", "test_get_referrer_graph.the_reference (local)"),
         ]
+        # Check that (parts of) the graph are printed correctly
+        string_buffer = io.StringIO()
+        print(graph, file=string_buffer)
+        output_string = string_buffer.getvalue()
+        assert_in("╙── TestClass1 instance (id=<ANY>)", output_string)
+        assert_in(
+            "    └─╼ test_get_referrer_graph.the_reference (local) (id=<ANY>)", output_string
+        )
+
+    def test_get_referrer_graph_with_cycle(self):
+        # Create a cycle
+        link1 = Link()
+        link2 = Link()
+        link1.next_link = link2
+        link2.next_link = link1
+        # Create a link from outside the cycle
+        link3 = Link(link1)
+        graph = referrers.get_referrer_graph(link1)
+        # Check that (parts of) the graph are printed correctly
+        string_buffer = io.StringIO()
+        print(graph, file=string_buffer)
+        output_string = string_buffer.getvalue()
+        assert_in("╙── Link instance (id=<ANY>)", output_string)
+        assert_in(
+            "    ├─╼ test_get_referrer_graph_with_cycle.link1 (local) (id=<ANY>)",
+            output_string,
+        )
+        assert_in("    ├─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string)
+        assert_in("    │   └─╼ Link (object) (id=<ANY>)", output_string)
+        assert_in(
+            "    │       ├─╼ test_get_referrer_graph_with_cycle.link2 (local) (id=<ANY>)",
+            output_string,
+        )
+        assert_in(
+            "    │       └─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string
+        )
+        assert_in("    │           └─╼ Link (object) (id=<ANY>) (circular ref)", output_string)
+        assert_in("    └─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string)
+        assert_in("        └─╼ Link (object) (id=<ANY>)", output_string)
+        assert_in(
+            "            └─╼ test_get_referrer_graph_with_cycle.link3 (local) (id=<ANY>)",
+            output_string,
+        )
 
     def test_get_referrer_graph_for_list(self):
         the_reference = TestClass1()
@@ -490,8 +531,7 @@ class TestGetReferrerGraph:
         )
         for root in roots:
             bfs_names = [
-                (edge[0].name, edge[1].name)
-                for edge in bfs_edges(nx_graph, source=root)
+                (edge[0].name, edge[1].name) for edge in bfs_edges(nx_graph, source=root)
             ]
             if root.name == "TestClass1 instance":
                 expected_names = [
@@ -570,8 +610,7 @@ class TestGetReferrerGraph:
         assert the_dict["a"] == "hello"
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            "test_untracked_container_object.the_dict" in node_name
-            for node_name in node_names
+            "test_untracked_container_object.the_dict" in node_name for node_name in node_names
         ), graph
 
     def test_untracked_object_within_container(self):
@@ -638,8 +677,7 @@ class TestGetReferrerGraph:
         assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            "tests.testing_modules.module1.module_variable (module variable)"
-            in node_name
+            "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
         ), str(graph)
 
@@ -654,8 +692,7 @@ class TestGetReferrerGraph:
         assert ["int instance"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            "tests.testing_modules.module1.module_variable (module variable)"
-            in node_name
+            "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
         ), str(graph)
 
@@ -688,8 +725,7 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "get_print_input_closure.<locals>.print_input.input_val (closure)"
-            in node_name
+            "get_print_input_closure.<locals>.print_input.input_val (closure)" in node_name
             for node_name in node_names
         ), str(graph)
 
@@ -723,8 +759,7 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         # The closure name should be in the graph
         assert any(
-            "get_print_input_closure.<locals>.print_input.input_val (closure)"
-            in node_name
+            "get_print_input_closure.<locals>.print_input.input_val (closure)" in node_name
             for node_name in node_names
         ), str(graph)
 
@@ -747,9 +782,7 @@ class TestGetReferrerGraph:
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert len(node_names) == 2
         assert any("TestClass1 instance" in node_name for node_name in node_names)
-        assert any(
-            "Timeout of 0.00 seconds exceeded" in node_name for node_name in node_names
-        )
+        assert any("Timeout of 0.00 seconds exceeded" in node_name for node_name in node_names)
 
     def test_single_object_referrer_limit(self):
         myobj = TestClass1()
@@ -777,9 +810,7 @@ class TestGetReferrerGraph:
         assert str(graph).count("TestClass2.my_attribute") == 120
 
     @pytest.mark.skipif(sys.version_info < (3, 12), reason="requires python >= 3.12")
-    @pytest.mark.skipif(
-        sys.version_info > (3, 12, 3), reason="requires python <= 3.12.3"
-    )
+    @pytest.mark.skipif(sys.version_info > (3, 12, 3), reason="requires python <= 3.12.3")
     def test_single_object_referrer_limit_with_immortal_object(self):
         # In early versions of Python 3.12 immortal objects have a very high reference
         # count so we need to deal with this somehow.
@@ -804,7 +835,10 @@ class TestGetReferrerGraph:
             (edge[0].name, edge[1].name) for edge in bfs_edges(nx_graph, source=_one(roots))
         ]
         assert bfs_names == [
-            ("TestClass1 instance", "test_weakref_proxy_with_deleted_ref.the_reference (local)"),
+            (
+                "TestClass1 instance",
+                "test_weakref_proxy_with_deleted_ref.the_reference (local)",
+            ),
         ]
 
     def test_class_attribute(self):
@@ -812,16 +846,8 @@ class TestGetReferrerGraph:
         ClassAttributeHolder.class_attr = held_instance
         graph = referrers.get_referrer_graph(held_instance)
         node_names = [node.name for node in graph.to_networkx().nodes]
-        assert any(
-            "ClassAttributeHolder"
-            in node_name
-            for node_name in node_names
-        ), str(graph)
-        assert any(
-            "dict[class_attr]"
-            in node_name
-            for node_name in node_names
-        ), str(graph)
+        assert any("ClassAttributeHolder" in node_name for node_name in node_names), str(graph)
+        assert any("dict[class_attr]" in node_name for node_name in node_names), str(graph)
 
     def test_class_attribute_in_instance(self):
         held_instance = HeldClass(a=23)
@@ -830,12 +856,29 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(held_instance)
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any(
-            "ClassAttributeHolder.class_attr"
-            in node_name
-            for node_name in node_names
+            "ClassAttributeHolder.class_attr" in node_name for node_name in node_names
         ), str(graph)
         assert any(
-            "test_class_attribute_in_instance.holder (local)"
-            in node_name
+            "test_class_attribute_in_instance.holder (local)" in node_name
             for node_name in node_names
         ), str(graph)
+
+
+def assert_in(substring: str, full_string: str):
+    """
+    Asserts that a substring is contained within another string, allowing for
+    a wildcard token <ANY> in the substring.
+
+    The <ANY> token matches any sequence of characters (including an empty one).
+    """
+    if not substring:
+        return
+    parts = [re.escape(part) for part in substring.split("<ANY>")]
+    regex_pattern = ".*?".join(parts)
+    match = re.search(regex_pattern, full_string, re.DOTALL)
+    if not match:
+        raise AssertionError(
+            f"Pattern not found.\n"
+            f"  Substring: '{substring}'\n"
+            f"  Full Text: '{full_string}'"
+        )
