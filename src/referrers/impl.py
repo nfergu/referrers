@@ -1,4 +1,5 @@
 import collections
+import enum
 import gc
 import inspect
 import logging
@@ -442,6 +443,45 @@ class GlobalVariableNameFinder(NameFinder):
         return _TYPE_GLOBAL
 
 
+class ReferrerNameType(enum.Enum):
+    """
+    The type of a referrer name.
+    """
+
+    INTERNAL = "INTERNAL"
+    """
+    An internal referrer name (not a real one from the object graph).
+    """
+
+    OBJECT = "OBJECT"
+    """
+    An object. This generally means that we couldn't find a more specific container and so
+    we couldn't determine a more specific referrer name.
+    """
+
+    COLLECTION_MEMBER = "COLLECTION"
+    """
+    A member of a collection (dict, list etc).
+    """
+
+    INSTANCE_ATTRIBUTE_IN_OBJECT = "INSTANCE_ATTRIBUTE_IN_OBJECT"
+    """
+    An instance attribute within an object. This is the way that Python >= 3.11 presents
+    instance attributes.  
+    """
+
+    INSTANCE_ATTRIBUTE_IN_DICT = "INSTANCE_ATTRIBUTE_IN_DICT"
+    """
+    An instance attribute within a dict that is referred to by an object. This is the way that 
+    Python < 3.11 presents instance attributes.
+    """
+
+    UNKNOWN = "UNKNOWN"
+    """
+    An unknown type.
+    """
+
+
 class ReferrerNameFinder(ABC):
     """
     Gets names for an object's referrer.
@@ -451,7 +491,9 @@ class ReferrerNameFinder(ABC):
     """
 
     @abstractmethod
-    def get_names(self, target_object: Any, referrer_object: Any) -> Set[str]:
+    def get_names(
+        self, target_object: Any, referrer_object: Any
+    ) -> Set[Tuple[str, ReferrerNameType]]:
         """
         Returns names for `referrer_object`, where this references `target_object`.
 
@@ -484,14 +526,16 @@ class ObjectNameFinder(ReferrerNameFinder):
         self._single_object_referrer_limit = single_object_referrer_limit
         self._excluded_id_set = excluded_id_set or set()
 
-    def get_names(self, target_object: Any, parent_object: Any) -> Set[str]:
+    def get_names(
+        self, target_object: Any, parent_object: Any
+    ) -> Set[Tuple[str, ReferrerNameType]]:
         if id(parent_object) in self._excluded_id_set:
             return set()
         else:
             # Deal with internal objects as a special case. These generally have a nice
             # string representation that we can use.
             if isinstance(parent_object, _InternalReferrer):
-                return {str(parent_object)}
+                return {(str(parent_object), ReferrerNameType.INTERNAL)}
             else:
                 instance_attribute_names = self._get_instance_attribute_names(
                     target_object, parent_object
@@ -503,8 +547,10 @@ class ObjectNameFinder(ReferrerNameFinder):
                 else:
                     return self._get_container_names(target_object, parent_object)
 
-    def _get_instance_attribute_names(self, target_object: Any, parent_object: Any):
-        names = set()
+    def _get_instance_attribute_names(
+        self, target_object: Any, parent_object: Any
+    ) -> Set[Tuple[str, ReferrerNameType]]:
+        names: Set[Tuple[str, ReferrerNameType]] = set()
         # The behaviour here is different between Python versions <=3.10, and > 3.10.
         # In versions <= 3.10, the parent of an object is a dict, which matches the
         # __dict__ attribute of the grandparent object (which is the actual referring object).
@@ -515,15 +561,23 @@ class ObjectNameFinder(ReferrerNameFinder):
                 key for key, value in parent_object.__dict__.items() if value is target_object
             }
             for key in matching_keys:
-                names.add(f"{type(parent_object).__name__}.{key} (instance attribute)")
+                names.add(
+                    (
+                        f"{type(parent_object).__name__}.{key} (instance attribute)",
+                        ReferrerNameType.INSTANCE_ATTRIBUTE_IN_OBJECT,
+                    )
+                )
         else:
             num_referrers = sys.getrefcount(target_object) - 1
             if _reached_referrer_limit(num_referrers, self._single_object_referrer_limit):
                 names.add(
-                    str(
-                        _ReferrerLimitReached(
-                            num_referrers, self._single_object_referrer_limit
-                        )
+                    (
+                        str(
+                            _ReferrerLimitReached(
+                                num_referrers, self._single_object_referrer_limit
+                            )
+                        ),
+                        ReferrerNameType.INTERNAL,
                     )
                 )
             else:
@@ -547,12 +601,17 @@ class ObjectNameFinder(ReferrerNameFinder):
                             }
                             for key in matching_keys:
                                 names.add(
-                                    f"{type(grandparent).__name__}.{key} (instance attribute)"
+                                    (
+                                        f"{type(grandparent).__name__}.{key} (instance attribute)",
+                                        ReferrerNameType.INSTANCE_ATTRIBUTE_IN_DICT,
+                                    )
                                 )
         return names
 
-    def _get_container_names(self, target_object: Any, parent_object: Any) -> Set[str]:
-        names = set()
+    def _get_container_names(
+        self, target_object: Any, parent_object: Any
+    ) -> Set[Tuple[str, ReferrerNameType]]:
+        names: Set[Tuple[str, ReferrerNameType]] = set()
         try:
             if isinstance(
                 parent_object, (collections.abc.Mapping, collections.abc.MutableMapping)
@@ -562,7 +621,10 @@ class ObjectNameFinder(ReferrerNameFinder):
                         parent_object,
                         extractor_func=lambda x: x.items(),
                         filter_func=lambda x: x[1] is target_object,
-                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                        selector_func=lambda x: (
+                            f"{type(parent_object).__name__}[{x[0]}]",
+                            ReferrerNameType.COLLECTION_MEMBER,
+                        ),
                     )
                 )
             elif isinstance(
@@ -574,7 +636,10 @@ class ObjectNameFinder(ReferrerNameFinder):
                         parent_object,
                         extractor_func=lambda x: enumerate(x),
                         filter_func=lambda x: x[1] is target_object,
-                        selector_func=lambda x: f"{type(parent_object).__name__}[{x[0]}]",
+                        selector_func=lambda x: (
+                            f"{type(parent_object).__name__}[{x[0]}]",
+                            ReferrerNameType.COLLECTION_MEMBER,
+                        ),
                     )
                 )
         except Exception as e:
@@ -589,7 +654,7 @@ class ObjectNameFinder(ReferrerNameFinder):
             pass
         # If we couldn't find any more specific names, fall back to the parent's type name.
         if not names:
-            names.add(f"{type(parent_object).__name__} (object)")
+            names.add((f"{type(parent_object).__name__} (object)", ReferrerNameType.OBJECT))
         return names
 
     def get_type(self) -> str:
@@ -777,7 +842,7 @@ class _ReferrerGraphBuilder:
                     referrer=timeout_object,
                     seen=False,
                 )
-                for referrer_graph_node in referrer_nodes:
+                for referrer_graph_node, _ in referrer_nodes:
                     graph.add_edge(target_graph_node, referrer_graph_node)
             elif max_depth is None or depth < max_depth:
 
@@ -801,14 +866,29 @@ class _ReferrerGraphBuilder:
                             referrer=referrer_object,
                             seen=seen,
                         )
-                        for referrer_graph_node in referrer_nodes:
+                        for referrer_graph_node, name_type in referrer_nodes:
                             graph.add_edge(target_graph_node, referrer_graph_node)
+                            if name_type == ReferrerNameType.INSTANCE_ATTRIBUTE_IN_OBJECT:
+                                # If we found an instance attribute within an object, we also
+                                # add the object itself to the graph. This makes the graph
+                                # more readable when, for example, instance attributes refer
+                                # to objects that are referenced in other instance attributes.
+                                # This has a side effect of making behaviour consistent across
+                                # Python versions.
+                                next_node = self._get_object_node(
+                                    referrer_object, is_target=False
+                                )
+                                graph.add_edge(referrer_graph_node, next_node)
+                                next_depth = depth + 2
+                            else:
+                                next_node = referrer_graph_node
+                                next_depth = depth + 1
                             # Avoid an infinite loop by only adding referrers that we haven't seen
                             # before. We still add the relevant edge to the graph so we can see the
                             # relationship though.
                             if not seen:
                                 seen_ids.add(referrer_id)
-                                stack.append((referrer_graph_node, referrer_object, depth + 1))
+                                stack.append((next_node, referrer_object, next_depth))
             else:
                 limit_exceeded_object = _DepthLimitReached(limit=max_depth)
                 referrer_nodes = self._get_referrer_nodes(
@@ -816,7 +896,7 @@ class _ReferrerGraphBuilder:
                     referrer=limit_exceeded_object,
                     seen=False,
                 )
-                for referrer_graph_node in referrer_nodes:
+                for referrer_graph_node, _ in referrer_nodes:
                     graph.add_edge(target_graph_node, referrer_graph_node)
 
         return _ReferrerGraph(graph)
@@ -860,24 +940,28 @@ class _ReferrerGraphBuilder:
     def _get_initial_target_node(
         self, target_object: Any
     ) -> Tuple[ReferrerGraphNode, Any, int]:
+        return self._get_object_node(target_object, is_target=True), target_object, 0
+
+    def _get_object_node(self, target_object: Any, is_target: bool):
         name = f"{type(target_object).__name__} (object)"
-        return (
-            ReferrerGraphNode(name=name, id=id(target_object), type="object", is_target=True),
-            target_object,
-            0,
+        return ReferrerGraphNode(
+            name=name, id=id(target_object), type="object", is_target=is_target
         )
 
     def _get_referrer_nodes(
         self, target_object: Any, referrer: Any, seen: bool
-    ) -> Set[ReferrerGraphNode]:
+    ) -> Set[Tuple[ReferrerGraphNode, ReferrerNameType]]:
         nodes = set()
         for finder in self._referrer_name_finders:
-            for name in finder.get_names(target_object, referrer):
+            for name, name_type in finder.get_names(target_object, referrer):
                 nodes.add(
-                    ReferrerGraphNode(
-                        name=name,
-                        id=id(referrer),
-                        type=finder.get_type(),
+                    (
+                        ReferrerGraphNode(
+                            name=name,
+                            id=id(referrer),
+                            type=finder.get_type(),
+                        ),
+                        name_type,
                     )
                 )
         return nodes

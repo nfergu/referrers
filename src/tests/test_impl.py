@@ -20,6 +20,7 @@ from referrers.impl import (
     _ReferrerGraphBuilder,
     IMMORTAL_OBJECT_REFCOUNT,
     ReferrerGraphNode,
+    ReferrerNameType,
 )
 from tests.testing_modules.module2 import imported_module_variable
 
@@ -193,7 +194,9 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2.my_attribute (instance attribute)"}
+        assert names == {
+            (f"TestClass2.my_attribute (instance attribute)", self._name_type_from_version())
+        }
         assert containing_class.my_attribute is local_ref
 
     def test_instance_attribute_frozen_dataclass(self):
@@ -202,7 +205,12 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2Frozen.let_it_go (instance attribute)"}
+        assert names == {
+            (
+                f"TestClass2Frozen.let_it_go (instance attribute)",
+                self._name_type_from_version(),
+            )
+        }
         assert containing_class.let_it_go is local_ref
 
     def test_instance_attribute_changed(self):
@@ -213,7 +221,9 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"TestClass2.my_attribute (instance attribute)"}
+        assert names == {
+            (f"TestClass2.my_attribute (instance attribute)", self._name_type_from_version())
+        }
         assert containing_class.my_attribute is local_ref
 
     def test_multiple_instance_attributes_in_same_class(self):
@@ -223,8 +233,11 @@ class TestObjectNameFinder:
             local_ref, _one(gc.get_referrers(local_ref))
         )
         assert names == {
-            f"TestClass3.my_attribute (instance attribute)",
-            f"TestClass3._my_attribute2 (instance attribute)",
+            (f"TestClass3.my_attribute (instance attribute)", self._name_type_from_version()),
+            (
+                f"TestClass3._my_attribute2 (instance attribute)",
+                self._name_type_from_version(),
+            ),
         }
         assert containing_class.my_attribute is local_ref
 
@@ -237,9 +250,19 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {
+                    (
+                        f"TestClass2.my_attribute (instance attribute)",
+                        self._name_type_from_version(),
+                    )
+                }
             elif referrer is containing_class2.__dict__ or referrer is containing_class2:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {
+                    (
+                        f"TestClass2.my_attribute (instance attribute)",
+                        self._name_type_from_version(),
+                    )
+                }
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -251,7 +274,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"dict[mykey]"}
+        assert names == {(f"dict[mykey]", ReferrerNameType.COLLECTION_MEMBER)}
         assert my_dict["mykey"] is local_ref
 
     def test_instance_attribute_and_dict(self):
@@ -263,9 +286,14 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is my_dict:
-                assert names == {f"dict[mykey]"}
+                assert names == {(f"dict[mykey]", ReferrerNameType.COLLECTION_MEMBER)}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {
+                    (
+                        f"TestClass2.my_attribute (instance attribute)",
+                        self._name_type_from_version(),
+                    )
+                }
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -283,7 +311,10 @@ class TestObjectNameFinder:
         # This is perhaps a bit confusing, but we only report the instance attribute
         # of the containing class, not the separate dict.
         assert names == {
-            f"TestClass2.my_attribute (instance attribute)",
+            (
+                f"TestClass2.my_attribute (instance attribute)",
+                ReferrerNameType.INSTANCE_ATTRIBUTE_IN_DICT,
+            ),
         }
         assert containing_class.my_attribute is local_ref
         assert dict_container.my_dict is containing_class.__dict__
@@ -294,7 +325,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"list[1]"}
+        assert names == {(f"list[1]", ReferrerNameType.COLLECTION_MEMBER)}
         assert my_list[1] is local_ref
 
     def test_instance_attribute_and_list(self):
@@ -306,9 +337,14 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is my_list:
-                assert names == {f"list[1]"}
+                assert names == {(f"list[1]", ReferrerNameType.COLLECTION_MEMBER)}
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {f"TestClass2.my_attribute (instance attribute)"}
+                assert names == {
+                    (
+                        f"TestClass2.my_attribute (instance attribute)",
+                        self._name_type_from_version(),
+                    )
+                }
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -320,7 +356,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"set (object)"}
+        assert names == {(f"set (object)", ReferrerNameType.OBJECT)}
         assert local_ref in my_set
 
     def test_class_dict(self):
@@ -329,7 +365,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class.__dict__, _one(gc.get_referrers(containing_class.__dict__))
         )
-        assert names == {f"TestClass2 (object)"}
+        assert names == {(f"TestClass2 (object)", ReferrerNameType.OBJECT)}
         assert containing_class.my_attribute is local_ref
 
     def test_outer_container(self):
@@ -339,7 +375,12 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class, _one(gc.get_referrers(containing_class))
         )
-        assert names == {f"TestClass2Container.contained_attribute (instance attribute)"}
+        assert names == {
+            (
+                f"TestClass2Container.contained_attribute (instance attribute)",
+                self._name_type_from_version(),
+            )
+        }
         assert containing_class.my_attribute is local_ref
         assert outer_class.contained_attribute is containing_class
 
@@ -351,7 +392,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {f"DictWithoutItems (object)"}
+        assert names == {(f"DictWithoutItems (object)", ReferrerNameType.OBJECT)}
         assert my_dict["mykey"] is local_ref
 
     # This test is only valid for Python versions <=3.10 as newer versions use
@@ -364,7 +405,18 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=50).get_names(
             myobj, next(iter(gc.get_referrers(myobj)))
         )
-        assert any("Referrer limit of 50 exceeded" in name for name in list(names))
+        assert any(
+            ("Referrer limit of 50 exceeded", ReferrerNameType.INTERNAL) in name
+            for name in list(names)
+        )
+
+    def _name_type_from_version(self) -> ReferrerNameType:
+        # Instance attribute behaviour differs between Python versions.
+        # See ReferrerNameType for more details.
+        if sys.version_info < (3, 11):
+            return ReferrerNameType.INSTANCE_ATTRIBUTE_IN_DICT
+        else:
+            return ReferrerNameType.INSTANCE_ATTRIBUTE_IN_OBJECT
 
 
 class TestModuleLevelNameFinder:
@@ -563,6 +615,13 @@ class TestGetReferrerGraph:
                         "TestClass1 (object)",
                         "TestClass2.my_attribute (instance attribute)",
                     ),
+                    # For instance attributes we also include the containing object
+                    # in the graph. This happens without doing anything special in Python
+                    # versions < 3.11, and we do it explicitly in later Python versions.
+                    (
+                        "TestClass2.my_attribute (instance attribute)",
+                        "TestClass2 (object)",
+                    ),
                     (
                         "TestClass1 (object)",
                         "test_get_referrer_graph_for_list.the_reference (local)",
@@ -574,16 +633,6 @@ class TestGetReferrerGraph:
                         "test_get_referrer_graph_for_list.the_reference2 (local)",
                     ),
                 ]
-                # In Python 3.10 and earlier there will be an extra node in the graph.
-                # This is the object that contains the instance attribute. In Python 3.11
-                # this is not included in the graph.
-                if sys.version_info[1] <= 10:
-                    expected_names.append(
-                        (
-                            "TestClass2.my_attribute (instance attribute)",
-                            "TestClass2 (object)",
-                        )
-                    )
                 assert set(bfs_names) == set(expected_names)
             elif target.name == "TestClass2 (object)":
                 assert bfs_names == [
