@@ -646,8 +646,14 @@ class _ReferrerGraph(ReferrerGraph):
         # Use a copy of the networkx generate_network_text function to avoid depending on
         # a narrow range of networkx versions.
         printable_graph = self._to_printable_graph()
+        # Use UtfUndirectedGlyphs here. Although the graph is directed, it's a bit confusing
+        # to use the directed glyphs here as the direction is from referents to referrers,
+        # which might be confusing.
         return "\n" + "\n".join(
-            line for line in networkx_copy.generate_network_text(printable_graph)
+            line
+            for line in networkx_copy.generate_network_text(
+                printable_graph, override_glyphs=networkx_copy.UtfUndirectedGlyphs
+            )
         )
 
     def to_networkx(self) -> nx.DiGraph:
@@ -659,12 +665,12 @@ class _ReferrerGraph(ReferrerGraph):
         # Make a string representation of the graph, breaking any cycles.
         for u, v in self._graph.edges():
             if isinstance(u, ReferrerGraphNode) and isinstance(v, ReferrerGraphNode):
-                # Break any cycles in graph and add a "(circular ref)" suffix to the node.
+                # Break any cycles in graph, and add a "(cycle)" suffix to the node.
                 u_str = str(u)
                 v_str = str(v)
                 if v in seen:
                     v_str = v_str + " (cycle)"
-                elif self._graph.out_degree(v) == 0:
+                elif self._graph.out_degree == 0:
                     v_str = v_str + " (root)"
                 new_graph.add_edge(u_str, v_str)
                 seen.add(u)

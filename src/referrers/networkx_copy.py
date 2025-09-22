@@ -1,6 +1,6 @@
 """
-Functionality copied from networkx version 3.3, to avoid depending on a specific
-range of networkx versions.
+Functionality copied from networkx version 3.3. This is primarily to avoid depending on a specific
+range of networkx versions, but the override_glyphs option has also been added.
 
 See networkx-license for the networkx license.
 """
@@ -12,9 +12,7 @@ class BaseGlyphs:
     @classmethod
     def as_dict(cls):
         return {
-            a: getattr(cls, a)
-            for a in dir(cls)
-            if not a.startswith("_") and a != "as_dict"
+            a: getattr(cls, a) for a in dir(cls) if not a.startswith("_") and a != "as_dict"
         }
 
 
@@ -97,8 +95,7 @@ def _find_sources(graph):
         # For undirected graph, the entire graph will be reachable as
         # long as we consider one node from every connected component
         sources = [
-            min(cc, key=lambda n: graph.degree[n])
-            for cc in nx.connected_components(graph)
+            min(cc, key=lambda n: graph.degree[n]) for cc in nx.connected_components(graph)
         ]
         sources = sorted(sources, key=lambda n: graph.degree[n])
     return sources
@@ -111,6 +108,7 @@ def generate_network_text(
     max_depth=None,
     ascii_only=False,
     vertical_chains=False,
+    override_glyphs=None,
 ):
     """Generate lines in the "network text" format
 
@@ -183,6 +181,9 @@ def generate_network_text(
 
     vertical_chains : Boolean
         If True, chains of nodes will be drawn vertically when possible.
+
+    override_glyphs : Boolean
+        If specified these glyphs nodes will be used instead of the default.
 
     Yields
     ------
@@ -259,11 +260,17 @@ def generate_network_text(
     is_directed = graph.is_directed()
 
     if is_directed:
-        glyphs = AsciiDirectedGlyphs if ascii_only else UtfDirectedGlyphs
+        if override_glyphs:
+            glyphs = override_glyphs
+        else:
+            glyphs = AsciiDirectedGlyphs if ascii_only else UtfDirectedGlyphs
         succ = graph.succ
         pred = graph.pred
     else:
-        glyphs = AsciiUndirectedGlyphs if ascii_only else UtfUndirectedGlyphs
+        if override_glyphs:
+            glyphs = override_glyphs
+        else:
+            glyphs = AsciiUndirectedGlyphs if ascii_only else UtfUndirectedGlyphs
         succ = graph.adj
         pred = graph.adj
 
@@ -314,9 +321,7 @@ def generate_network_text(
                     if num_skipped_children[parent] and parent is not None:
                         # Append the ellipsis to be emitted last
                         next_islast = True
-                        try_frame = StackFrame(
-                            node, Ellipsis, indents, next_islast, False
-                        )
+                        try_frame = StackFrame(node, Ellipsis, indents, next_islast, False)
                         stack.append(try_frame)
 
                         # Redo this frame, but not as a last object
@@ -385,9 +390,7 @@ def generate_network_text(
                 else:
                     # Showing only the unseen children results in a more
                     # concise representation for the undirected case.
-                    children = [
-                        child for child in succ[node] if child not in seen_nodes
-                    ]
+                    children = [child for child in succ[node] if child not in seen_nodes]
 
                     # In the undirected case, parents are also children, so we
                     # only need to immediately show the ones we can no longer
@@ -412,15 +415,10 @@ def generate_network_text(
                 if other_parents:
                     if label_attr is not None:
                         other_parents_labels = ", ".join(
-                            [
-                                str(graph.nodes[p].get(label_attr, p))
-                                for p in other_parents
-                            ]
+                            [str(graph.nodes[p].get(label_attr, p)) for p in other_parents]
                         )
                     else:
-                        other_parents_labels = ", ".join(
-                            [str(p) for p in other_parents]
-                        )
+                        other_parents_labels = ", ".join([str(p) for p in other_parents])
                     suffix = " ".join(["", glyphs.backedge, other_parents_labels])
                 else:
                     suffix = ""
@@ -447,7 +445,5 @@ def generate_network_text(
             # the original order.
             for idx, child in enumerate(children[::-1]):
                 next_islast = idx == 0
-                try_frame = StackFrame(
-                    node, child, next_prefix, next_islast, next_is_vertical
-                )
+                try_frame = StackFrame(node, child, next_prefix, next_islast, next_is_vertical)
                 stack.append(try_frame)

@@ -483,7 +483,7 @@ class TestGetReferrerGraph:
         output_string = string_buffer.getvalue()
         assert_in("╙── TestClass1 (object) (id=<ANY>) (target)", output_string)
         assert_in(
-            "    └─╼ test_get_referrer_graph.the_reference (local) (id=<ANY>)", output_string
+            "    └── test_get_referrer_graph.the_reference (local) (id=<ANY>)", output_string
         )
 
     def test_get_referrer_graph_with_cycle(self):
@@ -524,23 +524,23 @@ class TestGetReferrerGraph:
         output_string = string_buffer.getvalue()
         assert_in("╙── Link (object) (id=<ANY>) (target)", output_string)
         assert_in(
-            "    ├─╼ test_get_referrer_graph_with_cycle.link1 (local) (id=<ANY>)",
+            "    ├── test_get_referrer_graph_with_cycle.link1 (local) (id=<ANY>)",
             output_string,
         )
-        assert_in("    ├─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string)
-        assert_in("    │   └─╼ Link (object) (id=<ANY>)", output_string)
+        assert_in("    ├── Link.next_link (instance attribute) (id=<ANY>)", output_string)
+        assert_in("    │   └── Link (object) (id=<ANY>)", output_string)
         assert_in(
-            "    │       ├─╼ test_get_referrer_graph_with_cycle.link2 (local) (id=<ANY>)",
+            "    │       ├── test_get_referrer_graph_with_cycle.link2 (local) (id=<ANY>)",
             output_string,
         )
         assert_in(
-            "    │       └─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string
+            "    │       └── Link.next_link (instance attribute) (id=<ANY>)", output_string
         )
-        assert_in("    │           └─╼ Link (object) (id=<ANY>) (cycle)", output_string)
-        assert_in("    └─╼ Link.next_link (instance attribute) (id=<ANY>)", output_string)
-        assert_in("        └─╼ Link (object) (id=<ANY>)", output_string)
+        assert_in("    │           └── Link (object) (id=<ANY>) (cycle)", output_string)
+        assert_in("    └── Link.next_link (instance attribute) (id=<ANY>)", output_string)
+        assert_in("        └── Link (object) (id=<ANY>)", output_string)
         assert_in(
-            "            └─╼ test_get_referrer_graph_with_cycle.link3 (local) (id=<ANY>)",
+            "            └── test_get_referrer_graph_with_cycle.link3 (local) (id=<ANY>)",
             output_string,
         )
 
