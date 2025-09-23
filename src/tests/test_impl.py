@@ -112,6 +112,19 @@ def _one(iterable: Iterable):
 MY_GLOBAL = TestClass1()
 
 
+class TreeNode:
+    def __init__(self, parent: Optional["TreeNode"]):
+        self.parent = parent
+
+
+class TreeNodeHolder:
+    def __init__(self, node1: TreeNode, node2: TreeNode, node3: TreeNode, node4: TreeNode):
+        self.node1 = node1
+        self.node2 = node2
+        self.node3 = node3
+        self.node4 = node4
+
+
 class TestLocalVariableNameFinder:
     def test_calling_frame(self):
         ref1 = TestClass1()
@@ -194,9 +207,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {
-            (f"TestClass2.my_attribute (instance attribute)", self._name_type_from_version())
-        }
+        name = _one(names)
+        assert name.name == "TestClass2.my_attribute (instance attribute)"
+        assert name.is_container
+        assert name.referrer is containing_class
         assert containing_class.my_attribute is local_ref
 
     def test_instance_attribute_frozen_dataclass(self):
@@ -205,12 +219,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {
-            (
-                f"TestClass2Frozen.let_it_go (instance attribute)",
-                self._name_type_from_version(),
-            )
-        }
+        name = _one(names)
+        assert name.name == "TestClass2Frozen.let_it_go (instance attribute)"
+        assert name.is_container
+        assert name.referrer is containing_class
         assert containing_class.let_it_go is local_ref
 
     def test_instance_attribute_changed(self):
@@ -221,9 +233,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {
-            (f"TestClass2.my_attribute (instance attribute)", self._name_type_from_version())
-        }
+        name = _one(names)
+        assert name.name == "TestClass2.my_attribute (instance attribute)"
+        assert name.is_container
+        assert name.referrer is containing_class
         assert containing_class.my_attribute is local_ref
 
     def test_multiple_instance_attributes_in_same_class(self):
@@ -232,13 +245,15 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {
-            (f"TestClass3.my_attribute (instance attribute)", self._name_type_from_version()),
-            (
-                f"TestClass3._my_attribute2 (instance attribute)",
-                self._name_type_from_version(),
-            ),
+        assert len(names) == 2
+        name_strings = {name.name for name in names}
+        assert name_strings == {
+            "TestClass3.my_attribute (instance attribute)",
+            "TestClass3._my_attribute2 (instance attribute)",
         }
+        for name in names:
+            assert name.is_container
+            assert name.referrer is containing_class
         assert containing_class.my_attribute is local_ref
 
     def test_instance_attribute_in_different_classes(self):
@@ -250,19 +265,15 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {
-                    (
-                        f"TestClass2.my_attribute (instance attribute)",
-                        self._name_type_from_version(),
-                    )
-                }
+                name = _one(names)
+                assert name.name == "TestClass2.my_attribute (instance attribute)"
+                assert name.is_container
+                assert name.referrer is containing_class
             elif referrer is containing_class2.__dict__ or referrer is containing_class2:
-                assert names == {
-                    (
-                        f"TestClass2.my_attribute (instance attribute)",
-                        self._name_type_from_version(),
-                    )
-                }
+                name = _one(names)
+                assert name.name == "TestClass2.my_attribute (instance attribute)"
+                assert name.is_container
+                assert name.referrer is containing_class2
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -274,7 +285,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {(f"dict[mykey]", ReferrerNameType.COLLECTION_MEMBER)}
+        name = _one(names)
+        assert name.name == "dict[key=mykey]"
+        assert name.is_container
+        assert name.referrer is my_dict
         assert my_dict["mykey"] is local_ref
 
     def test_instance_attribute_and_dict(self):
@@ -286,14 +300,15 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is my_dict:
-                assert names == {(f"dict[mykey]", ReferrerNameType.COLLECTION_MEMBER)}
+                name = _one(names)
+                assert name.name == "dict[key=mykey]"
+                assert name.is_container
+                assert name.referrer is my_dict
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {
-                    (
-                        f"TestClass2.my_attribute (instance attribute)",
-                        self._name_type_from_version(),
-                    )
-                }
+                name = _one(names)
+                assert name.name == "TestClass2.my_attribute (instance attribute)"
+                assert name.is_container
+                assert name.referrer is containing_class
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -310,12 +325,10 @@ class TestObjectNameFinder:
         )
         # This is perhaps a bit confusing, but we only report the instance attribute
         # of the containing class, not the separate dict.
-        assert names == {
-            (
-                f"TestClass2.my_attribute (instance attribute)",
-                ReferrerNameType.INSTANCE_ATTRIBUTE_IN_DICT,
-            ),
-        }
+        name = _one(names)
+        assert name.name == "TestClass2.my_attribute (instance attribute)"
+        assert name.is_container
+        assert name.referrer is containing_class
         assert containing_class.my_attribute is local_ref
         assert dict_container.my_dict is containing_class.__dict__
 
@@ -325,7 +338,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {(f"list[1]", ReferrerNameType.COLLECTION_MEMBER)}
+        name = _one(names)
+        assert name.name == "list[index=1]"
+        assert name.is_container
+        assert name.referrer is my_list
         assert my_list[1] is local_ref
 
     def test_instance_attribute_and_list(self):
@@ -337,14 +353,15 @@ class TestObjectNameFinder:
                 local_ref, referrer
             )
             if referrer is my_list:
-                assert names == {(f"list[1]", ReferrerNameType.COLLECTION_MEMBER)}
+                name = _one(names)
+                assert name.name == "list[index=1]"
+                assert name.is_container
+                assert name.referrer is my_list
             elif referrer is containing_class.__dict__ or referrer is containing_class:
-                assert names == {
-                    (
-                        f"TestClass2.my_attribute (instance attribute)",
-                        self._name_type_from_version(),
-                    )
-                }
+                name = _one(names)
+                assert name.name == "TestClass2.my_attribute (instance attribute)"
+                assert name.is_container
+                assert name.referrer is containing_class
             else:
                 raise AssertionError(f"Unexpected referrer: {referrer}")
         assert containing_class.my_attribute is local_ref
@@ -356,7 +373,12 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {(f"set (object)", ReferrerNameType.OBJECT)}
+        name = _one(names)
+        assert name.name == "set (object)"
+        # Sets aren't considered containers since we don't do anything special to denote
+        # membership of them.
+        assert not name.is_container
+        assert name.referrer is my_set
         assert local_ref in my_set
 
     def test_class_dict(self):
@@ -365,7 +387,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class.__dict__, _one(gc.get_referrers(containing_class.__dict__))
         )
-        assert names == {(f"TestClass2 (object)", ReferrerNameType.OBJECT)}
+        name = _one(names)
+        assert name.name == "TestClass2 (object)"
+        assert not name.is_container
+        assert name.referrer is containing_class
         assert containing_class.my_attribute is local_ref
 
     def test_outer_container(self):
@@ -375,12 +400,10 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             containing_class, _one(gc.get_referrers(containing_class))
         )
-        assert names == {
-            (
-                f"TestClass2Container.contained_attribute (instance attribute)",
-                self._name_type_from_version(),
-            )
-        }
+        name = _one(names)
+        assert name.name == "TestClass2Container.contained_attribute (instance attribute)"
+        assert name.is_container
+        assert name.referrer is outer_class
         assert containing_class.my_attribute is local_ref
         assert outer_class.contained_attribute is containing_class
 
@@ -392,10 +415,13 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
             local_ref, _one(gc.get_referrers(local_ref))
         )
-        assert names == {(f"DictWithoutItems (object)", ReferrerNameType.OBJECT)}
+        name = _one(names)
+        assert name.name == "DictWithoutItems (object)"
+        assert not name.is_container
+        assert name.referrer is my_dict
         assert my_dict["mykey"] is local_ref
 
-    # This test is only valid for Python versions <=3.10 as newer versions use
+    # This test is only valid for Python versions <=3.10 as newer versions *may* use
     # a different way of finding object references (avoiding the referrers of grandparents).
     @pytest.mark.skipif(sys.version_info > (3, 10), reason="requires python <= 3.10")
     def test_single_object_referrer_limit(self):
@@ -405,10 +431,64 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=50).get_names(
             myobj, next(iter(gc.get_referrers(myobj)))
         )
-        assert any(
-            ("Referrer limit of 50 exceeded", ReferrerNameType.INTERNAL) in name
-            for name in list(names)
+        assert any(name.name == "Referrer limit of 50 exceeded" for name in names)
+
+    def test_tree_node(self):
+        tree_node1 = TreeNode(parent=None)
+        tree_node2 = TreeNode(parent=tree_node1)
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            tree_node2, _one(gc.get_referrers(tree_node1))
         )
+        name = _one(names)
+        assert name.name == "TreeNode (object)"
+        assert not name.is_container
+        assert name.referrer is tree_node2
+
+    def test_tree_node_holder(self):
+        """
+        Tests a tree holder that has multiple references to nodes in a tree.
+        """
+        (_, leaf_holder, *_) = _construct_mini_tree()
+        # The behaviour of gc.get_referrers is kind of strange. In Python > 3.12 the first
+        # time the referrers of one of the member attributes are obtained, the referrer
+        # is the LeafNodeHolder object, but subsequently the referrer is the
+        # LeafNodeHolder object's dict. I don't know this happens, but we try to ensure the
+        # result of the name finder is consistent.
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            leaf_holder.node1, _one(gc.get_referrers(leaf_holder.node1))
+        )
+        name = _one(names)
+        assert name.name == "TreeNodeHolder.node1 (instance attribute)"
+        assert name.is_container
+        assert name.referrer is leaf_holder
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            leaf_holder.node1, _one(gc.get_referrers(leaf_holder.node1))
+        )
+        name = _one(names)
+        assert name.name == "TreeNodeHolder.node1 (instance attribute)"
+        assert name.is_container
+        assert name.referrer is leaf_holder
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            leaf_holder.node2, _one(gc.get_referrers(leaf_holder.node2))
+        )
+        name = _one(names)
+        assert name.name == "TreeNodeHolder.node2 (instance attribute)"
+        assert name.is_container
+        assert name.referrer is leaf_holder
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            leaf_holder.node3, _one(gc.get_referrers(leaf_holder.node3))
+        )
+        name = _one(names)
+        assert name.name == "TreeNodeHolder.node3 (instance attribute)"
+        assert name.is_container
+        assert name.referrer is leaf_holder
+        names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
+            leaf_holder.node4, _one(gc.get_referrers(leaf_holder.node4))
+        )
+        name = _one(names)
+        assert name.name == "TreeNodeHolder.node4 (instance attribute)"
+        assert name.is_container
+        assert name.referrer is leaf_holder
 
     def _name_type_from_version(self) -> ReferrerNameType:
         # Instance attribute behaviour differs between Python versions.
@@ -751,6 +831,7 @@ class TestGetReferrerGraph:
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
         graph = referrers.get_referrer_graph(178, module_prefixes=["tests"])
+        print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int (object)"] == [root.name for root in roots]
@@ -941,6 +1022,182 @@ class TestGetReferrerGraph:
             "test_class_attribute_in_instance.holder (local)" in node_name
             for node_name in node_names
         ), str(graph)
+
+    def test_regression_on_converging_tree(self):
+        """
+        Test for a tree-like structure.
+
+        This test checks the exact structure of the referrer graph, so is sensitive to
+        small changes, so it's more of a regression test than a unit test.
+        """
+        (
+            root,
+            leaf_holder,
+            id_root,
+            id_level1_1,
+            id_level1_2,
+            id_level2_1,
+            id_level2_2,
+            id_level2_3,
+            id_level2_4,
+            id_leaf_holder,
+        ) = _construct_mini_tree()
+        graph = referrers.get_referrer_graph(root)
+
+        assert (
+            str(graph)
+            == f"""
+╙── TreeNode (object) (id={id_root}) (target)
+    ├── test_regression_on_converging_tree.root (local) (id={id_root}) (root)
+    ├── TreeNode.parent (instance attribute) (id={id_level1_1})
+    │   └── TreeNode (object) (id={id_level1_1})
+    │       ├── TreeNode.parent (instance attribute) (id={id_level2_1})
+    │       │   └── TreeNode (object) (id={id_level2_1})
+    │       │       └── TreeNodeHolder.node1 (instance attribute) (id={id_leaf_holder})
+    │       │           └── TreeNodeHolder (object) (id={id_leaf_holder}) (cycle member)
+    │       └── TreeNode.parent (instance attribute) (id={id_level2_2})
+    │           └── TreeNode (object) (id={id_level2_2})
+    │               └── TreeNodeHolder.node2 (instance attribute) (id={id_leaf_holder})
+    │                   └── TreeNodeHolder (object) (id={id_leaf_holder}) (cycle member)
+    └── TreeNode.parent (instance attribute) (id={id_level1_2})
+        └── TreeNode (object) (id={id_level1_2})
+            ├── TreeNode.parent (instance attribute) (id={id_level2_3})
+            │   └── TreeNode (object) (id={id_level2_3})
+            │       └── TreeNodeHolder.node3 (instance attribute) (id={id_leaf_holder})
+            │           └── TreeNodeHolder (object) (id={id_leaf_holder}) (cycle member)
+            └── TreeNode.parent (instance attribute) (id={id_level2_4})
+                └── TreeNode (object) (id={id_level2_4})
+                    └── TreeNodeHolder.node4 (instance attribute) (id={id_leaf_holder})
+                        └── TreeNodeHolder (object) (id={id_leaf_holder})
+                            └── test_regression_on_converging_tree.leaf_holder (local) (id={id_leaf_holder}) (root)"""
+        )
+
+        nx_graph = graph.to_networkx()
+
+        targets = [node for node in nx_graph.nodes if node.is_target]
+        assert len(targets) == 1
+        target = _one(targets)
+        assert "TreeNode (object)" == target.name
+
+        bfs_names = [
+            (f"{edge[0].name}: {edge[0].id}", f"{edge[1].name}: {edge[1].id}")
+            for edge in bfs_edges(nx_graph, source=target)
+        ]
+
+        assert bfs_names == [
+            (
+                f"TreeNode (object): {id_root}",
+                f"test_regression_on_converging_tree.root (local): {id_root}",
+            ),
+            (
+                f"TreeNode (object): {id_root}",
+                f"TreeNode.parent (instance attribute): {id_level1_1}",
+            ),
+            (
+                f"TreeNode (object): {id_root}",
+                f"TreeNode.parent (instance attribute): {id_level1_2}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level1_1}",
+                f"TreeNode (object): {id_level1_1}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level1_2}",
+                f"TreeNode (object): {id_level1_2}",
+            ),
+            (
+                f"TreeNode (object): {id_level1_1}",
+                f"TreeNode.parent (instance attribute): {id_level2_1}",
+            ),
+            (
+                f"TreeNode (object): {id_level1_1}",
+                f"TreeNode.parent (instance attribute): {id_level2_2}",
+            ),
+            (
+                f"TreeNode (object): {id_level1_2}",
+                f"TreeNode.parent (instance attribute): {id_level2_3}",
+            ),
+            (
+                f"TreeNode (object): {id_level1_2}",
+                f"TreeNode.parent (instance attribute): {id_level2_4}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level2_1}",
+                f"TreeNode (object): {id_level2_1}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level2_2}",
+                f"TreeNode (object): {id_level2_2}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level2_3}",
+                f"TreeNode (object): {id_level2_3}",
+            ),
+            (
+                f"TreeNode.parent (instance attribute): {id_level2_4}",
+                f"TreeNode (object): {id_level2_4}",
+            ),
+            (
+                f"TreeNode (object): {id_level2_1}",
+                f"TreeNodeHolder.node1 (instance attribute): {id_leaf_holder}",
+            ),
+            (
+                f"TreeNode (object): {id_level2_2}",
+                f"TreeNodeHolder.node2 (instance attribute): {id_leaf_holder}",
+            ),
+            (
+                f"TreeNode (object): {id_level2_3}",
+                f"TreeNodeHolder.node3 (instance attribute): {id_leaf_holder}",
+            ),
+            (
+                f"TreeNode (object): {id_level2_4}",
+                f"TreeNodeHolder.node4 (instance attribute): {id_leaf_holder}",
+            ),
+            (
+                f"TreeNodeHolder.node1 (instance attribute): {id_leaf_holder}",
+                f"TreeNodeHolder (object): {id_leaf_holder}",
+            ),
+            (
+                f"TreeNodeHolder (object): {id_leaf_holder}",
+                f"test_regression_on_converging_tree.leaf_holder (local): {id_leaf_holder}",
+            ),
+        ]
+
+
+def _construct_mini_tree() -> Tuple[
+    TreeNode,
+    TreeNodeHolder,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+]:
+    root = TreeNode(parent=None)
+    level1_1 = TreeNode(parent=root)
+    level1_2 = TreeNode(parent=root)
+    level2_1 = TreeNode(parent=level1_1)
+    level2_2 = TreeNode(parent=level1_1)
+    level2_3 = TreeNode(parent=level1_2)
+    level2_4 = TreeNode(parent=level1_2)
+    leaf_holder = TreeNodeHolder(
+        node1=level2_1, node2=level2_2, node3=level2_3, node4=level2_4
+    )
+    return (
+        root,
+        leaf_holder,
+        id(root),
+        id(level1_1),
+        id(level1_2),
+        id(level2_1),
+        id(level2_2),
+        id(level2_3),
+        id(level2_4),
+        id(leaf_holder),
+    )
 
 
 def assert_in(substring: str, full_string: str):
