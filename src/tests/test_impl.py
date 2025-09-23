@@ -1171,6 +1171,18 @@ class TestGetReferrerGraph:
             ),
         ]
 
+    def test_get_referrer_graph_with_html_entity(self):
+        # This is an HTML entity. A module that lists HTML entities used to cause us problems
+        # before we ignored modules.
+        a = "zwnj;"
+        graph = referrers.get_referrer_graph(a)
+        assert (
+            str(graph)
+            == f"""
+╙── str (object) (id={id(a)}) (target)
+    └── test_get_referrer_graph_with_html_entity.a (local) (id={id(a)}) (root)"""
+        )
+
     def test_regression_on_converging_tree(self):
         """
         Test for a tree-like structure.
