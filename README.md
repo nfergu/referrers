@@ -233,7 +233,8 @@ my_function()
 
 This will produce an image like this:
 
-<img width="717" height="570" alt="image" src="https://github.com/user-attachments/assets/07472473-a28f-4aec-b440-5fbc50d837d4" />
+<img width="740" height="438" alt="image" src="https://github.com/user-attachments/assets/e1fd9220-e2c9-4a33-a508-3cc5da1876ab" />
+
 
 
 
