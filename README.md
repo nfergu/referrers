@@ -233,7 +233,8 @@ my_function()
 
 This will produce an image like this:
 
-<img width="486" alt="Screenshot 2024-05-18 at 16 41 30" src="https://github.com/nfergu/referrers/assets/1291583/10cd424c-d9a4-4be3-82c4-174fd18c2774">
+<img width="717" height="570" alt="image" src="https://github.com/user-attachments/assets/07472473-a28f-4aec-b440-5fbc50d837d4" />
+
 
 
 ## Multi-threading
