@@ -421,9 +421,10 @@ class TestObjectNameFinder:
         assert name.referrer is my_dict
         assert my_dict["mykey"] is local_ref
 
-    # This test is only valid for Python versions <=3.10 as newer versions *may* use
+    # This test is only valid for Python versions ==3.10 as newer and older versions *may* use
     # a different way of finding object references (avoiding the referrers of grandparents).
-    @pytest.mark.skipif(sys.version_info > (3, 10), reason="requires python <= 3.10")
+    @pytest.mark.skipif(sys.version_info > (3, 10), reason="requires python == 3.10")
+    @pytest.mark.skipif(sys.version_info < (3, 10), reason="requires python == 3.10")
     def test_single_object_referrer_limit(self):
         myobj = TestClass1()
         otherobjs = [TestClass2(myobj) for _ in range(100)]
@@ -431,7 +432,7 @@ class TestObjectNameFinder:
         names = ObjectNameFinder(single_object_referrer_limit=50).get_names(
             myobj, next(iter(gc.get_referrers(myobj)))
         )
-        assert any(name.name == "Referrer limit of 50 exceeded" for name in names)
+        assert any(name.name == "Referrer limit of 50 exceeded" for name in names), names
 
     def test_tree_node(self):
         tree_node1 = TreeNode(parent=None)
