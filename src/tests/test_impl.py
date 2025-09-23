@@ -622,7 +622,7 @@ class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference)
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 (object)"] == [root.name for root in roots]
         bfs_names = [
@@ -651,7 +651,7 @@ class TestGetReferrerGraph:
         link3 = Link(link1)
         graph = referrers.get_referrer_graph(link1)
 
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         # There should be no roots since the target node is in a cycle
         assert len(roots) == 0
@@ -702,7 +702,7 @@ class TestGetReferrerGraph:
         the_reference = TestClass1()
         the_reference2 = TestClass2(my_attribute=the_reference)
         graph = referrers.get_referrer_graph_for_list([the_reference, the_reference2])
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert {"TestClass1 (object)"} == set(root.name for root in roots)
         targets = [node for node in nx_graph.nodes if node.is_target]
@@ -751,13 +751,13 @@ class TestGetReferrerGraph:
         # the graph.
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference)
-        for node in graph.to_networkx().nodes:
+        for node in graph.to_networkx().reverse().nodes:
             assert "target_object" not in node.name
 
     def test_graph_builder_excluded(self):
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference)
-        for node in graph.to_networkx().nodes:
+        for node in graph.to_networkx().reverse().nodes:
             assert "_ReferrerGraphBuilder" not in node.name
 
     def test_max_depth(self):
@@ -769,7 +769,7 @@ class TestGetReferrerGraph:
             original_link,
             max_depth=12,
         )
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         # There are two levels in the graph for each link: the Link object and the instance
         # attribute that points at the next link.
         instance_attribute_nodes = [
@@ -789,7 +789,7 @@ class TestGetReferrerGraph:
         assert len(gc.get_referrers(the_dict)) == 0
         graph = referrers.get_referrer_graph(the_dict)
         assert the_dict["a"] == "hello"
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "test_untracked_container_object.the_dict" in node_name for node_name in node_names
         ), graph
@@ -807,7 +807,7 @@ class TestGetReferrerGraph:
         assert len(gc.get_referrers(the_dict["a"])) == 0
         graph = referrers.get_referrer_graph(the_dict["a"])
         assert the_dict["a"] == "hello"
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "test_untracked_object_within_container.the_dict" in node_name
             for node_name in node_names
@@ -820,7 +820,7 @@ class TestGetReferrerGraph:
         assert gc.is_tracked(hello_tuple)
         graph = referrers.get_referrer_graph(my_var)
         assert hello_tuple[0] == "hello"
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "test_untracked_object_within_tracked_tuple.my_var" in node_name
             for node_name in node_names
@@ -841,7 +841,7 @@ class TestGetReferrerGraph:
             the_obj.instance_var,
         )
         assert the_obj.instance_var == "hello"
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "test_untracked_object_within_object.the_obj" in node_name
             for node_name in node_names
@@ -853,10 +853,10 @@ class TestGetReferrerGraph:
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
         graph = referrers.get_referrer_graph(178, module_prefixes=["tests"])
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
@@ -864,7 +864,9 @@ class TestGetReferrerGraph:
         # We don't attempt to find referrers from the module object itself, so
         # there should be no outgoing edges from the module node.
         module_nodes = [
-            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+            node
+            for node in graph.to_networkx().reverse().nodes
+            if node.name == "module (object)"
         ]
         for module_node in module_nodes:
             assert nx_graph.out_degree(module_node) == 0
@@ -875,10 +877,10 @@ class TestGetReferrerGraph:
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
         graph = referrers.get_referrer_graph(178)
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
@@ -886,7 +888,9 @@ class TestGetReferrerGraph:
         # We don't attempt to find referrers from the module object itself, so
         # there should be no outgoing edges from the module node.
         module_nodes = [
-            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+            node
+            for node in graph.to_networkx().reverse().nodes
+            if node.name == "module (object)"
         ]
         for module_node in module_nodes:
             assert nx_graph.out_degree(module_node) == 0
@@ -898,10 +902,10 @@ class TestGetReferrerGraph:
         # It defines a class called IntContainer with an instance attribute that references
         # 145.
         graph = referrers.get_referrer_graph(145)
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             ".int_container_value (instance attribute)" in node_name
             for node_name in node_names
@@ -909,7 +913,9 @@ class TestGetReferrerGraph:
         # We don't attempt to find referrers from the module object itself, so
         # there should be no outgoing edges from the module node.
         module_nodes = [
-            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+            node
+            for node in graph.to_networkx().reverse().nodes
+            if node.name == "module (object)"
         ]
         for module_node in module_nodes:
             assert nx_graph.out_degree(module_node) == 0
@@ -921,10 +927,10 @@ class TestGetReferrerGraph:
         closure = get_print_input_closure(the_obj)
         graph = referrers.get_referrer_graph(the_obj)
         assert closure is not None
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         # The closure name should be in the graph
         assert any(
             "get_print_input_closure.<locals>.print_input.input_val (closure)" in node_name
@@ -940,10 +946,10 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(the_obj)
         assert closure is not None
         assert closure_holder.closure is closure
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         # The closure_holder variable should be in the graph
         assert any(
             "test_get_referrer_graph_for_closure_referenced_by_object.closure_holder"
@@ -955,10 +961,10 @@ class TestGetReferrerGraph:
         self,
     ):
         graph = referrers.get_referrer_graph(module_level_variable)
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         # The closure name should be in the graph
         assert any(
             "get_print_input_closure.<locals>.print_input.input_val (closure)" in node_name
@@ -970,10 +976,10 @@ class TestGetReferrerGraph:
     ):
         nested_tuples = _get_nested_tuples()
         graph = referrers.get_referrer_graph(nested_tuples[0][0][0][0])
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["str (object)"] == [root.name for root in roots]
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert sum("tuple[index=0]" in node_name for node_name in node_names) == 4, str(graph)
 
     def test_get_referrer_graph_with_timeout(self):
@@ -981,7 +987,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(the_reference, timeout=0.0)
         # The graph should have two nodes: one for the target object, and one
         # telling us we've timed-out.
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert len(node_names) == 2
         assert any("TestClass1 (object)" in node_name for node_name in node_names)
         assert any("Timeout of 0.00 seconds exceeded" in node_name for node_name in node_names)
@@ -1030,7 +1036,7 @@ class TestGetReferrerGraph:
         del my_function
         the_reference = TestClass1()
         graph = referrers.get_referrer_graph(the_reference)
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["TestClass1 (object)"] == [root.name for root in roots]
         bfs_names = [
@@ -1047,7 +1053,7 @@ class TestGetReferrerGraph:
         held_instance = HeldClass(a=23)
         ClassAttributeHolder.class_attr = held_instance
         graph = referrers.get_referrer_graph(held_instance)
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any("ClassAttributeHolder" in node_name for node_name in node_names), str(graph)
         assert any("dict[key=class_attr]" in node_name for node_name in node_names), str(graph)
 
@@ -1056,7 +1062,7 @@ class TestGetReferrerGraph:
         holder = ClassAttributeHolder()
         holder.class_attr = held_instance
         graph = referrers.get_referrer_graph(held_instance)
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any(
             "ClassAttributeHolder.class_attr" in node_name for node_name in node_names
         ), str(graph)
@@ -1072,7 +1078,7 @@ class TestGetReferrerGraph:
         holder2 = InstanceAttributeHolder(held_instance)
         multi_holder = MultiAttributeHolder(holder1, holder2)
         graph = referrers.get_referrer_graph(my_int)
-        node_names = [node.name for node in graph.to_networkx().nodes]
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         # Check that both attributes of the multi-holder are in the graph
         assert any("MultiAttributeHolder.attr1" in node_name for node_name in node_names), str(
             graph
@@ -1091,7 +1097,7 @@ class TestGetReferrerGraph:
 
         print(graph)
 
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
 
         targets = [node for node in nx_graph.nodes if node.is_target]
         assert len(targets) == 1
@@ -1232,7 +1238,7 @@ class TestGetReferrerGraph:
                             └── test_regression_on_converging_tree.leaf_holder (local) (id={id_leaf_holder}) (root)"""
         )
 
-        nx_graph = graph.to_networkx()
+        nx_graph = graph.to_networkx().reverse()
 
         targets = [node for node in nx_graph.nodes if node.is_target]
         assert len(targets) == 1

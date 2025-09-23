@@ -785,7 +785,9 @@ class _ReferrerGraph(ReferrerGraph):
         )
 
     def to_networkx(self) -> nx.DiGraph:
-        return self._graph
+        # Reverse the graph so that the direction of edges is from referrer to referent.
+        # This is probably what most people would expect.
+        return self._graph.reverse(copy=True)
 
     def _to_printable_graph(self) -> nx.DiGraph:
         new_graph = nx.DiGraph()
