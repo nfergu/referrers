@@ -437,11 +437,11 @@ class TestObjectNameFinder:
         tree_node1 = TreeNode(parent=None)
         tree_node2 = TreeNode(parent=tree_node1)
         names = ObjectNameFinder(single_object_referrer_limit=None).get_names(
-            tree_node2, _one(gc.get_referrers(tree_node1))
+            tree_node1, _one(gc.get_referrers(tree_node1))
         )
         name = _one(names)
-        assert name.name == "TreeNode (object)"
-        assert not name.is_container
+        assert name.name == "TreeNode.parent (instance attribute)"
+        assert name.is_container
         assert name.referrer is tree_node2
 
     def test_tree_node_holder(self):
