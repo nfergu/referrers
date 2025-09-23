@@ -526,7 +526,7 @@ class ReferrerNameFinder(ABC):
     """
 
     @abstractmethod
-    def get_names(self, target_object: Any, referrer_object: Any) -> list[ReferrerName]:
+    def get_names(self, target_object: Any, referrer_object: Any) -> List[ReferrerName]:
         """
         Returns names for `referrer_object`, where this references `target_object`.
 
@@ -559,7 +559,7 @@ class ObjectNameFinder(ReferrerNameFinder):
         self._single_object_referrer_limit = single_object_referrer_limit
         self._excluded_id_set = excluded_id_set or set()
 
-    def get_names(self, target_object: Any, parent_object: Any) -> list[ReferrerName]:
+    def get_names(self, target_object: Any, parent_object: Any) -> List[ReferrerName]:
         if id(parent_object) in self._excluded_id_set:
             return []
         else:
@@ -586,8 +586,8 @@ class ObjectNameFinder(ReferrerNameFinder):
 
     def _get_instance_attribute_names(
         self, target_object: Any, parent_object: Any
-    ) -> list[ReferrerName]:
-        names: list[ReferrerName] = []
+    ) -> List[ReferrerName]:
+        names: List[ReferrerName] = []
         # The behaviour here is different between Python versions <=3.10, and > 3.10,
         # and also between multiple calls to the referrers of an object's instance
         # attributes within a single Python version.
@@ -656,7 +656,7 @@ class ObjectNameFinder(ReferrerNameFinder):
     def _get_container_names(
         self, target_object: Any, parent_object: Any
     ) -> Set[ReferrerName]:
-        names: list[ReferrerName] = []
+        names: List[ReferrerName] = []
         try:
             if isinstance(
                 parent_object, (collections.abc.Mapping, collections.abc.MutableMapping)
@@ -789,7 +789,7 @@ class _ReferrerGraph(ReferrerGraph):
 
     def _to_printable_graph(self) -> nx.DiGraph:
         new_graph = nx.DiGraph()
-        seen: set[ReferrerGraphNode] = set()
+        seen: Set[ReferrerGraphNode] = set()
         unique_id = 0
         # Make a string representation of the graph, breaking any cycles.
         for u, v in self._graph.edges():
@@ -958,7 +958,7 @@ class _ReferrerGraphBuilder:
         target_graph_node: ReferrerGraphNode,
         graph: nx.DiGraph,
         stack: Deque[Tuple[ReferrerGraphNode, Any, int]],
-        seen_ids: set[int],
+        seen_ids: Set[int],
         current_depth: int,
     ):
         """
@@ -1067,7 +1067,7 @@ class _ReferrerGraphBuilder:
         self, target_object: Any, referrer: Any
     ) -> Set[Tuple[ReferrerGraphNode, ReferrerName]]:
         nodes = list()
-        seen_names: set[str] = set()
+        seen_names: Set[str] = set()
         for finder in self._referrer_name_finders:
             for name_obj in finder.get_names(target_object, referrer):
                 # Filter out duplicate names.
