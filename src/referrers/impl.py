@@ -1001,7 +1001,11 @@ class _ReferrerGraphBuilder:
             # relationship though.
             if actual_referrer_id not in seen_ids:
                 seen_ids.add(actual_referrer_id)
-                stack.append((next_node, actual_referrer, next_depth))
+                # Exclude the actual referrer. The original referrer object would have
+                # already been excluded if necessary, but the actual referrer
+                # may be different.
+                if not self._is_excluded(actual_referrer):
+                    stack.append((next_node, actual_referrer, next_depth))
 
     def _reached_timeout(self, start_time: float, timeout: Optional[float]) -> bool:
         if timeout is None:

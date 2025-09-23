@@ -668,7 +668,7 @@ class TestGetReferrerGraph:
         assert_in(
             "    │       └── Link.next_link (instance attribute) (id=<ANY>)", output_string
         )
-        assert_in("    │           └── Link (object) (id=<ANY>) (cycle)", output_string)
+        assert_in("    │           └── Link (object) (id=<ANY>) (cycle member)", output_string)
         assert_in("    └── Link.next_link (instance attribute) (id=<ANY>)", output_string)
         assert_in("        └── Link (object) (id=<ANY>)", output_string)
         assert_in(
@@ -831,7 +831,6 @@ class TestGetReferrerGraph:
         # The module module1 is not imported, but has been loaded by the test runner.
         # It defines module_variable = 178.
         graph = referrers.get_referrer_graph(178, module_prefixes=["tests"])
-        print(graph)
         nx_graph = graph.to_networkx()
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["int (object)"] == [root.name for root in roots]
@@ -840,6 +839,13 @@ class TestGetReferrerGraph:
             "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
         ), str(graph)
+        # We don't attempt to find referrers from the module object itself, so
+        # there should be no outgoing edges from the module node.
+        module_nodes = [
+            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+        ]
+        for module_node in module_nodes:
+            assert nx_graph.out_degree(module_node) == 0
 
     def test_get_referrer_graph_for_unimported_module_without_explicit_module_prefix(
         self,
@@ -855,6 +861,13 @@ class TestGetReferrerGraph:
             "tests.testing_modules.module1.module_variable (module variable)" in node_name
             for node_name in node_names
         ), str(graph)
+        # We don't attempt to find referrers from the module object itself, so
+        # there should be no outgoing edges from the module node.
+        module_nodes = [
+            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+        ]
+        for module_node in module_nodes:
+            assert nx_graph.out_degree(module_node) == 0
 
     def test_get_referrer_graph_for_unimported_module_referencing_untracked_object(
         self,
@@ -871,6 +884,13 @@ class TestGetReferrerGraph:
             ".int_container_value (instance attribute)" in node_name
             for node_name in node_names
         ), str(graph)
+        # We don't attempt to find referrers from the module object itself, so
+        # there should be no outgoing edges from the module node.
+        module_nodes = [
+            node for node in graph.to_networkx().nodes if node.name == "module (object)"
+        ]
+        for module_node in module_nodes:
+            assert nx_graph.out_degree(module_node) == 0
 
     def test_get_referrer_graph_for_closure(
         self,
@@ -932,7 +952,7 @@ class TestGetReferrerGraph:
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["str (object)"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().nodes]
-        assert sum("tuple[0]" in node_name for node_name in node_names) == 4, str(graph)
+        assert sum("tuple[index=0]" in node_name for node_name in node_names) == 4, str(graph)
 
     def test_get_referrer_graph_with_timeout(self):
         the_reference = TestClass1()
@@ -1007,7 +1027,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(held_instance)
         node_names = [node.name for node in graph.to_networkx().nodes]
         assert any("ClassAttributeHolder" in node_name for node_name in node_names), str(graph)
-        assert any("dict[class_attr]" in node_name for node_name in node_names), str(graph)
+        assert any("dict[key=class_attr]" in node_name for node_name in node_names), str(graph)
 
     def test_class_attribute_in_instance(self):
         held_instance = HeldClass(a=23)
