@@ -6,7 +6,7 @@ import sys
 import weakref
 from time import sleep
 import threading
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List
 
 import pytest
 from networkx import bfs_edges
@@ -597,6 +597,27 @@ class ClassAttributeHolder:
     class_attr: HeldClass = None
 
 
+class InstanceAttributeHolder:
+    def __init__(self, instance_attr: HeldClass):
+        self.instance_attr = instance_attr
+
+
+class StringHolder:
+    def __init__(self, the_string: str):
+        self.the_string = the_string
+
+
+class ListHolder:
+    def __init__(self, the_list: List[Any]):
+        self.the_list = the_list
+
+
+class MultiAttributeHolder:
+    def __init__(self, attr1: Any, attr2: Any):
+        self.attr1 = attr1
+        self.attr2 = attr2
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
@@ -1043,6 +1064,112 @@ class TestGetReferrerGraph:
             "test_class_attribute_in_instance.holder (local)" in node_name
             for node_name in node_names
         ), str(graph)
+
+    def test_multi_attribute_holder(self):
+        my_int = 42238423948239842934
+        held_instance = HeldClass(my_int)
+        holder1 = InstanceAttributeHolder(held_instance)
+        holder2 = InstanceAttributeHolder(held_instance)
+        multi_holder = MultiAttributeHolder(holder1, holder2)
+        graph = referrers.get_referrer_graph(my_int)
+        node_names = [node.name for node in graph.to_networkx().nodes]
+        # Check that both attributes of the multi-holder are in the graph
+        assert any("MultiAttributeHolder.attr1" in node_name for node_name in node_names), str(
+            graph
+        )
+        assert any("MultiAttributeHolder.attr2" in node_name for node_name in node_names), str(
+            graph
+        )
+
+    def test_list_holder(self):
+        my_int = 4223842938472938479
+        held_instance1 = HeldClass(my_int)
+        held_instance2 = HeldClass(my_int)
+        held_instance3 = HeldClass(my_int)
+        list_holder = ListHolder(the_list=[held_instance1, held_instance2, held_instance3])
+        graph = referrers.get_referrer_graph(my_int)
+
+        print(graph)
+
+        nx_graph = graph.to_networkx()
+
+        targets = [node for node in nx_graph.nodes if node.is_target]
+        assert len(targets) == 1
+        target = _one(targets)
+        assert "int (object)" == target.name
+
+        bfs_names = [
+            (f"{edge[0].name}: {edge[0].id}", f"{edge[1].name}: {edge[1].id}")
+            for edge in bfs_edges(nx_graph, source=target)
+        ]
+
+        assert bfs_names == [
+            (f"int (object): {id(my_int)}", f"test_list_holder.my_int (local): {id(my_int)}"),
+            (
+                f"int (object): {id(my_int)}",
+                f"HeldClass._a (instance attribute): {id(held_instance1)}",
+            ),
+            (
+                f"int (object): {id(my_int)}",
+                f"HeldClass._a (instance attribute): {id(held_instance2)}",
+            ),
+            (
+                f"int (object): {id(my_int)}",
+                f"HeldClass._a (instance attribute): {id(held_instance3)}",
+            ),
+            (
+                f"HeldClass._a (instance attribute): {id(held_instance1)}",
+                f"HeldClass (object): {id(held_instance1)}",
+            ),
+            (
+                f"HeldClass._a (instance attribute): {id(held_instance2)}",
+                f"HeldClass (object): {id(held_instance2)}",
+            ),
+            (
+                f"HeldClass._a (instance attribute): {id(held_instance3)}",
+                f"HeldClass (object): {id(held_instance3)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance1)}",
+                f"test_list_holder.held_instance1 (local): {id(held_instance1)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance1)}",
+                f"list[index=0]: {id(list_holder.the_list)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance2)}",
+                f"test_list_holder.held_instance2 (local): {id(held_instance2)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance2)}",
+                f"list[index=1]: {id(list_holder.the_list)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance3)}",
+                f"test_list_holder.held_instance3 (local): {id(held_instance3)}",
+            ),
+            (
+                f"HeldClass (object): {id(held_instance3)}",
+                f"list[index=2]: {id(list_holder.the_list)}",
+            ),
+            (
+                f"list[index=0]: {id(list_holder.the_list)}",
+                f"list (object): {id(list_holder.the_list)}",
+            ),
+            (
+                f"list (object): {id(list_holder.the_list)}",
+                f"ListHolder.the_list (instance attribute): {id(list_holder)}",
+            ),
+            (
+                f"ListHolder.the_list (instance attribute): {id(list_holder)}",
+                f"ListHolder (object): {id(list_holder)}",
+            ),
+            (
+                f"ListHolder (object): {id(list_holder)}",
+                f"test_list_holder.list_holder (local): {id(list_holder)}",
+            ),
+        ]
 
     def test_regression_on_converging_tree(self):
         """
