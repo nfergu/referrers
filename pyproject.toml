@@ -8,11 +8,12 @@ readme = "README.md"
 repository = "https://github.com/nfergu/referrers"
 
 [tool.poetry.dependencies]
-python = ">=3.8"
+python = ">=3.9"
 networkx = ">=2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
+pydantic = "^2.11"
 
 [build-system]
 requires = ["poetry-core"]

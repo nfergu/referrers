@@ -594,7 +594,7 @@ class ObjectNameFinder(ReferrerNameFinder):
         # Sometimes the parent of an object is a dict, which matches the
         # __dict__ attribute of the grandparent object (which is the actual referring object).
         # Sometimes the parent of an object is the referring object itself.
-        if hasattr(parent_object, "__dict__"):
+        if _safe_hasattr(parent_object, "__dict__"):
             # This is the logic there the parent of an object is the referring object itself
             matching_keys = {
                 key for key, value in parent_object.__dict__.items() if value is target_object
@@ -634,7 +634,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                         # If so the grandparent is referring to the target object via an instance
                         # attribute. This affects the name that we give the target.
                         if (
-                            hasattr(grandparent, "__dict__")
+                            _safe_hasattr(grandparent, "__dict__")
                             and grandparent.__dict__ is parent_object
                         ):
                             matching_keys = {
@@ -743,7 +743,7 @@ class ModuleLevelNameFinder(NameFinder):
     def get_names(self, target_object: Any) -> Set[str]:
         names = set()
         for module in self._modules:
-            if hasattr(module, "__dict__"):
+            if _safe_hasattr(module, "__dict__"):
                 for var_name, var_value in module.__dict__.items():
                     if (
                         var_value is target_object
@@ -1256,7 +1256,7 @@ class _ReferrerGraphBuilder:
             if self._matches_prefixes(name, module_prefixes)
         ]
         for module in self._modules:
-            if hasattr(module, "__dict__"):
+            if _safe_hasattr(module, "__dict__"):
                 for var_name, var_value in module.__dict__.items():
                     if (
                         self._contains_untracked_objects(var_value)
@@ -1452,3 +1452,11 @@ def _safe_str(obj: Any, truncate_at: int) -> str:
     except Exception as e:
         # Some things don't like their string representation being obtained.
         return f"<Error when getting string representation: {str(e)}>"
+
+
+def _safe_hasattr(obj: Any, attr_name: str) -> bool:
+    try:
+        return hasattr(obj, attr_name)
+    except Exception:
+        # Some things don't like hasattr being called on them.
+        return False

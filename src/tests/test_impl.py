@@ -8,6 +8,7 @@ from time import sleep
 import threading
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List
 
+import pydantic
 import pytest
 from networkx import bfs_edges
 
@@ -618,6 +619,18 @@ class MultiAttributeHolder:
         self.attr2 = attr2
 
 
+@dataclasses.dataclass
+class PythonDataclass:
+    id: int
+    name: str = "John Doe"
+
+
+@pydantic.dataclasses.dataclass
+class PydanticDataclass:
+    id: int
+    name: str = "John Doe"
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
@@ -1084,6 +1097,34 @@ class TestGetReferrerGraph:
             graph
         )
         assert any("MultiAttributeHolder.attr2" in node_name for node_name in node_names), str(
+            graph
+        )
+
+    def test_regular_dataclass(self):
+        my_dataclass = PythonDataclass(id=98237948729348)
+        graph = referrers.get_referrer_graph(98237948729348)
+        print(graph)
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
+        assert any("int (object)" in node_name for node_name in node_names), str(graph)
+        assert any("PythonDataclass.id" in node_name for node_name in node_names), str(graph)
+        assert any(
+            "test_regular_dataclass.my_dataclass" in node_name for node_name in node_names
+        ), str(graph)
+        assert any("PythonDataclass (object)" in node_name for node_name in node_names), str(
+            graph
+        )
+
+    def test_pydantic_dataclass(self):
+        my_dataclass = PydanticDataclass(id=98237948729348)
+        graph = referrers.get_referrer_graph(98237948729348)
+        print(graph)
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
+        assert any("int (object)" in node_name for node_name in node_names), str(graph)
+        assert any("PydanticDataclass.id" in node_name for node_name in node_names), str(graph)
+        assert any(
+            "test_pydantic_dataclass.my_dataclass" in node_name for node_name in node_names
+        ), str(graph)
+        assert any("PydanticDataclass (object)" in node_name for node_name in node_names), str(
             graph
         )
 
