@@ -21,14 +21,15 @@ my_function()
 Will produce output like:
 
 ```plaintext
-╙── list instance (id=4346564736)
-    ├─╼ dict[a] (id=4347073728)
-    │   └─╼ my_function.d (local) (id=4347073728)
-    └─╼ my_function.a (local) (id=4346564736)
+╙── list (object) (id=4343582848) (target)
+    ├── my_function.a (local) (id=4343582848) (root)
+    └── dict[key=a] (id=4345092160)
+        └── dict (object) (id=4345092160)
+            └── my_function.d (local) (id=4345092160) (root)
 ```
 
 In this case the list instance is referenced directly by a local variable called `a`, and also
-via a dictionary, which is in turn referenced by a local variable called `d`.
+via an entry in a dictionary, which is in turn referenced by a local variable called `d`.
 
 Note: this package is experimental and may not work in all cases. It may also be inefficient
 in certain cases, and should not be used in performance-critical code.
@@ -82,12 +83,11 @@ my_func()
 This will output something like:
 
 ```plaintext
-╙── list instance (id=4514970240)
-    └─╼ ParentClass.member_variable (instance attribute) (id=4513308624)
-        └─╼ my_func.local_variable (local) (id=4513308624)
+╙── list (object) (id=4360191168) (target)
+    └── ParentClass.member_variable (instance attribute) (id=4344740512)
+        └── ParentClass (object) (id=4344740512)
+            └── my_func.local_variable (local) (id=4344740512) (root)
 ```
-
-Although the precise output will vary according to the Python version used.
 
 In this case the list instance is referenced by a member variable of `ParentClass`, which
 is in turn referenced by a local variable in the `my_func` function.
@@ -215,8 +215,7 @@ def my_function():
     other_variable = ContainerClass(local_variable.instance_attribute)
     graph = referrers.get_referrer_graph(local_variable.instance_attribute)
     
-    # Reverse the graph so that arrows point from referrers to referents
-    nx_graph = graph.to_networkx().reverse()
+    nx_graph = graph.to_networkx()
     nx.draw_networkx(
         nx_graph,
         pos=nx.spectral_layout(nx_graph),
@@ -311,9 +310,10 @@ my_func()
 This will output something like:
 
 ```plaintext
-╙── dict instance (id=4483928640)
-    └─╼ ParentClass.member_variable (instance attribute) (id=4482048576)
-        └─╼ my_func.local_variable (local) (id=4482048576)
+╙── dict (object) (id=4374433472) (target)
+    └── ParentClass.member_variable (instance attribute) (id=4381605040)
+        └── ParentClass (object) (id=4381605040)
+            └── my_func.local_variable (local) (id=4381605040) (root)
 ```
 
 ## Source
