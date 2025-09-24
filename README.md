@@ -189,7 +189,7 @@ its `to_networkx` method. This can be useful for visualizing the graph, or for
 performing more complex analysis.
 
 The resulting NetworkX graph consists of nodes of type `ReferrerGraphNode`, with edges
-directed from objects to their referrers.
+directed from referrers to their referents.
 
 For example, to visualize a graph of references to an object using [NetworkX](https://networkx.org/)
 and [Matplotlib](https://matplotlib.org/):
