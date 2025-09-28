@@ -52,6 +52,8 @@ logger = logging.getLogger(__name__)
 class ReferrerGraphNode:
     """
     Represents a node in a referrer graph.
+
+    Nodes are uniquely identified by their name, id, and type (*not* by the id alone).
     """
 
     name: str
@@ -62,8 +64,12 @@ class ReferrerGraphNode:
 
     id: int
     """
-    A unique ID for the referrer object. If the referrer is not an object then this is the
+    The ID of the referrer object. If the referrer is not an object then this is the
     ID of the object it refers to.
+    
+    Note: multiple nodes in the graph may have the same ID. For example, an object's instance
+    attribute has the same ID as the object itself, and a local variable that refers to an object
+    has the same ID as the object itself.
     """
 
     type: str
@@ -501,8 +507,9 @@ class ReferrerName:
 
     is_container: bool
     """
-    Whether the referrer is a container. Containers include (some) Python collections
-    like lists and dicts, and objects.
+    Whether the referrer is a container. Containers include everything inheriting from the
+    Python Container class, and also all objects that contain a referent as an instance
+    attribute.
     
     Containers can be treated specially because there are potentially multiple interesting
     things about a collection: the collection itself, and an object's membership of the
@@ -667,8 +674,8 @@ class ObjectNameFinder(ReferrerNameFinder):
                         extractor_func=lambda x: x.items(),
                         filter_func=lambda x: x[1] is target_object,
                         selector_func=lambda x: ReferrerName(
-                            name=f"{type(parent_object).__name__}[key="
-                            f"{_safe_str(x[0], truncate_at=_MAX_MAPPING_KEY_LENGTH)}]",
+                            name=f"{type(parent_object).__name__} key="
+                            f"{_safe_str(x[0], truncate_at=_MAX_MAPPING_KEY_LENGTH)}",
                             is_container=True,
                             referrer=parent_object,
                         ),
@@ -684,10 +691,22 @@ class ObjectNameFinder(ReferrerNameFinder):
                         extractor_func=lambda x: enumerate(x),
                         filter_func=lambda x: x[1] is target_object,
                         selector_func=lambda x: ReferrerName(
-                            name=f"{type(parent_object).__name__}[index={x[0]}]",
+                            name=f"{type(parent_object).__name__} index={x[0]}",
                             is_container=True,
                             referrer=parent_object,
                         ),
+                    )
+                )
+            # Note: the order is important here, since mappings and sequences are
+            # also containers.
+            elif isinstance(parent_object, collections.abc.Container):
+                # This doesn't add a lot of extra information, but it's nice to be
+                # consistent in the fact that we add an "extra" node for all containers.
+                names.append(
+                    ReferrerName(
+                        name=f"{type(parent_object).__name__} member",
+                        is_container=True,
+                        referrer=parent_object,
                     )
                 )
         except Exception as e:

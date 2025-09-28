@@ -6,7 +6,7 @@ import sys
 import weakref
 from time import sleep
 import threading
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List, Set
 
 import pytest
 from networkx import bfs_edges
@@ -286,7 +286,7 @@ class TestObjectNameFinder:
             local_ref, _one(gc.get_referrers(local_ref))
         )
         name = _one(names)
-        assert name.name == "dict[key=mykey]"
+        assert name.name == "dict key=mykey"
         assert name.is_container
         assert name.referrer is my_dict
         assert my_dict["mykey"] is local_ref
@@ -301,7 +301,7 @@ class TestObjectNameFinder:
             )
             if referrer is my_dict:
                 name = _one(names)
-                assert name.name == "dict[key=mykey]"
+                assert name.name == "dict key=mykey"
                 assert name.is_container
                 assert name.referrer is my_dict
             elif referrer is containing_class.__dict__ or referrer is containing_class:
@@ -339,7 +339,7 @@ class TestObjectNameFinder:
             local_ref, _one(gc.get_referrers(local_ref))
         )
         name = _one(names)
-        assert name.name == "list[index=1]"
+        assert name.name == "list index=1"
         assert name.is_container
         assert name.referrer is my_list
         assert my_list[1] is local_ref
@@ -354,7 +354,7 @@ class TestObjectNameFinder:
             )
             if referrer is my_list:
                 name = _one(names)
-                assert name.name == "list[index=1]"
+                assert name.name == "list index=1"
                 assert name.is_container
                 assert name.referrer is my_list
             elif referrer is containing_class.__dict__ or referrer is containing_class:
@@ -374,10 +374,8 @@ class TestObjectNameFinder:
             local_ref, _one(gc.get_referrers(local_ref))
         )
         name = _one(names)
-        assert name.name == "set (object)"
-        # Sets aren't considered containers since we don't do anything special to denote
-        # membership of them.
-        assert not name.is_container
+        assert name.name == "set member"
+        assert name.is_container
         assert name.referrer is my_set
         assert local_ref in my_set
 
@@ -600,6 +598,11 @@ class StringHolder:
 class ListHolder:
     def __init__(self, the_list: List[Any]):
         self.the_list = the_list
+
+
+class SetHolder:
+    def __init__(self, the_set: Set[Any]):
+        self.the_set = the_set
 
 
 class MultiAttributeHolder:
@@ -976,7 +979,7 @@ class TestGetReferrerGraph:
         roots = [node for node in nx_graph.nodes if nx_graph.in_degree(node) == 0]
         assert ["str (object)"] == [root.name for root in roots]
         node_names = [node.name for node in graph.to_networkx().reverse().nodes]
-        assert sum("tuple[index=0]" in node_name for node_name in node_names) == 4, str(graph)
+        assert sum("tuple index=0" in node_name for node_name in node_names) == 4, str(graph)
 
     def test_get_referrer_graph_with_timeout(self):
         the_reference = TestClass1()
@@ -1051,7 +1054,7 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(held_instance)
         node_names = [node.name for node in graph.to_networkx().reverse().nodes]
         assert any("ClassAttributeHolder" in node_name for node_name in node_names), str(graph)
-        assert any("dict[key=class_attr]" in node_name for node_name in node_names), str(graph)
+        assert any("dict key=class_attr" in node_name for node_name in node_names), str(graph)
 
     def test_class_attribute_in_instance(self):
         held_instance = HeldClass(a=23)
@@ -1105,8 +1108,6 @@ class TestGetReferrerGraph:
         list_holder = ListHolder(the_list=[held_instance1, held_instance2, held_instance3])
         graph = referrers.get_referrer_graph(my_int)
 
-        print(graph)
-
         nx_graph = graph.to_networkx().reverse()
 
         targets = [node for node in nx_graph.nodes if node.is_target]
@@ -1151,7 +1152,7 @@ class TestGetReferrerGraph:
             ),
             (
                 f"HeldClass (object): {id(held_instance1)}",
-                f"list[index=0]: {id(list_holder.the_list)}",
+                f"list index=0: {id(list_holder.the_list)}",
             ),
             (
                 f"HeldClass (object): {id(held_instance2)}",
@@ -1159,7 +1160,7 @@ class TestGetReferrerGraph:
             ),
             (
                 f"HeldClass (object): {id(held_instance2)}",
-                f"list[index=1]: {id(list_holder.the_list)}",
+                f"list index=1: {id(list_holder.the_list)}",
             ),
             (
                 f"HeldClass (object): {id(held_instance3)}",
@@ -1167,10 +1168,10 @@ class TestGetReferrerGraph:
             ),
             (
                 f"HeldClass (object): {id(held_instance3)}",
-                f"list[index=2]: {id(list_holder.the_list)}",
+                f"list index=2: {id(list_holder.the_list)}",
             ),
             (
-                f"list[index=0]: {id(list_holder.the_list)}",
+                f"list index=0: {id(list_holder.the_list)}",
                 f"list (object): {id(list_holder.the_list)}",
             ),
             (
@@ -1186,6 +1187,26 @@ class TestGetReferrerGraph:
                 f"test_list_holder.list_holder (local): {id(list_holder)}",
             ),
         ]
+
+    def test_set_holder(self):
+        my_int1 = 4223842938472938479
+        my_int2 = 9834779238479823749
+        set_holder = SetHolder(the_set={my_int1, my_int2})
+        graph = referrers.get_referrer_graph(my_int1)
+
+        nx_graph = graph.to_networkx().reverse()
+
+        targets = [node for node in nx_graph.nodes if node.is_target]
+        assert len(targets) == 1
+        target = _one(targets)
+        assert "int (object)" == target.name
+
+        node_names = [node.name for node in graph.to_networkx().reverse().nodes]
+
+        # Both the set itself, and the ints membership of the set should be represented
+        # as nodes in the graph.
+        assert any("set member" in node_name for node_name in node_names), str(graph)
+        assert any("set (object)" in node_name for node_name in node_names), str(graph)
 
     def test_get_referrer_graph_with_html_entity(self):
         # This is an HTML entity. A module that lists HTML entities used to cause us problems
