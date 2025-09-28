@@ -23,7 +23,7 @@ Will produce output like:
 ```plaintext
 ╙── list (object) (id=4343582848) (target)
     ├── my_function.a (local) (id=4343582848) (root)
-    └── dict[key=a] (id=4345092160)
+    └── dict, key=a (id=4345092160)
         └── dict (object) (id=4345092160)
             └── my_function.d (local) (id=4345092160) (root)
 ```
