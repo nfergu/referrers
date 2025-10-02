@@ -1169,6 +1169,7 @@ class _ReferrerGraphBuilder:
 
         for value in return_dict.values():
             extra_exclusions.add(id(value))
+        extra_exclusions.add(id(return_dict))
 
         return return_dict, extra_exclusions
 
@@ -1238,7 +1239,7 @@ class _ReferrerGraphBuilder:
          * The result of gc.get_objects()
          * Local variables
          * Global variables
-         * Module-level variables that are no global variables.
+         * Module-level variables that are not global variables.
         """
         roots = []
 

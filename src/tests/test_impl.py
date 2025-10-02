@@ -1,9 +1,11 @@
 import dataclasses
 import gc
 import io
+import random
 import re
 import sys
 import weakref
+from functools import lru_cache
 from time import sleep
 import threading
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, List, Set
@@ -1220,6 +1222,14 @@ class TestGetReferrerGraph:
     └── test_get_referrer_graph_with_html_entity.a (local) (id={id(a)}) (root)"""
         )
 
+    def test_get_referrer_graph_with_lru_cache(self):
+        all_results = []
+        for _ in range(16):
+            all_results.append(_function_with_lru_cache(random.randint(0, 10000000000000000)))
+        graph = referrers.get_referrer_graph(all_results[10])
+        # Just check that we don't get loads of extra stuff when we use an LRU cache
+        assert len(graph.to_networkx().nodes) == 4
+
     def test_regression_on_converging_tree(self):
         """
         Test for a tree-like structure.
@@ -1359,6 +1369,11 @@ class TestGetReferrerGraph:
                 f"test_regression_on_converging_tree.leaf_holder (local): {id_leaf_holder}",
             ),
         ]
+
+
+@lru_cache(maxsize=10)
+def _function_with_lru_cache(input_val: int):
+    return str(input_val)
 
 
 def _construct_mini_tree() -> Tuple[
