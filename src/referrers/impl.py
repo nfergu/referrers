@@ -1054,7 +1054,8 @@ class _ReferrerGraphBuilder:
             or inspect.isbuiltin(obj)
             or inspect.isfunction(obj)
             or inspect.ismethoddescriptor(obj)
-            or inspect.ismethodwrapper(obj)
+            # Python versions <= 3.10 don't have ismethodwrapper
+            or (hasattr(inspect, "ismethodwrapper") and inspect.ismethodwrapper(obj))
             or inspect.ismodule(obj)
             or isinstance(obj, ReferrerName)
         )
