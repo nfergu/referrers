@@ -619,6 +619,24 @@ class PythonDataclass:
     name: str = "John Doe"
 
 
+class ClassWithFunction:
+    def my_func(self):
+        pass
+
+
+class ClassWithDataAndMethod:
+    def __init__(self, data: int):
+        self.data = data
+
+    def my_method(self):
+        pass
+
+
+class ClassWithMethodReference:
+    def __init__(self, method: Callable[[], None]):
+        self.method = method
+
+
 class TestGetReferrerGraph:
     def test_get_referrer_graph(self):
         the_reference = TestClass1()
@@ -1229,6 +1247,47 @@ class TestGetReferrerGraph:
         graph = referrers.get_referrer_graph(all_results[10])
         # Just check that we don't get loads of extra stuff when we use an LRU cache
         assert len(graph.to_networkx().nodes) == 4
+
+    def test_referenced_method(self):
+        with_data = ClassWithDataAndMethod(23948293487293847923)
+        with_ref = ClassWithMethodReference(with_data.my_method)
+        graph = referrers.get_referrer_graph(with_data.data)
+
+        print(graph)
+
+        nx_graph = graph.to_networkx().reverse()
+
+        targets = [node for node in nx_graph.nodes if node.is_target]
+        assert len(targets) == 1
+        target = _one(targets)
+        assert "int (object)" == target.name
+
+        bfs_names = [
+            (f"{edge[0].name}", f"{edge[1].name}")
+            for edge in bfs_edges(nx_graph, source=target)
+        ]
+
+        assert bfs_names == [
+            ("int (object)", "ClassWithDataAndMethod.data (instance attribute)"),
+            (
+                "ClassWithDataAndMethod.data (instance attribute)",
+                "ClassWithDataAndMethod (object)",
+            ),
+            (
+                "ClassWithDataAndMethod (object)",
+                "test_referenced_method.with_data (local)",
+            ),
+            ("ClassWithDataAndMethod (object)", "my_method method"),
+            ("my_method method", "ClassWithMethodReference.method (instance attribute)"),
+            (
+                "ClassWithMethodReference.method (instance attribute)",
+                "ClassWithMethodReference (object)",
+            ),
+            (
+                "ClassWithMethodReference (object)",
+                "test_referenced_method.with_ref (local)",
+            ),
+        ]
 
     def test_regression_on_converging_tree(self):
         """

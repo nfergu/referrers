@@ -589,7 +589,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                 if instance_attribute_names:
                     return instance_attribute_names
                 else:
-                    return self._get_container_names(target_object, parent_object)
+                    return self._get_non_instance_attribute_names(target_object, parent_object)
 
     def _get_instance_attribute_names(
         self, target_object: Any, parent_object: Any
@@ -660,7 +660,7 @@ class ObjectNameFinder(ReferrerNameFinder):
                                 )
         return names
 
-    def _get_container_names(
+    def _get_non_instance_attribute_names(
         self, target_object: Any, parent_object: Any
     ) -> Set[ReferrerName]:
         names: List[ReferrerName] = []
@@ -706,6 +706,14 @@ class ObjectNameFinder(ReferrerNameFinder):
                     ReferrerName(
                         name=f"{type(parent_object).__name__} member",
                         is_container=True,
+                        referrer=parent_object,
+                    )
+                )
+            elif inspect.ismethod(parent_object):
+                names.append(
+                    ReferrerName(
+                        name=f"{parent_object.__name__} method",
+                        is_container=False,
                         referrer=parent_object,
                     )
                 )
@@ -1043,7 +1051,10 @@ class _ReferrerGraphBuilder:
         # (temporarily) hold a reference to objects.
         return (
             inspect.isframe(obj)
-            or inspect.isroutine(obj)
+            or inspect.isbuiltin(obj)
+            or inspect.isfunction(obj)
+            or inspect.ismethoddescriptor(obj)
+            or inspect.ismethodwrapper(obj)
             or inspect.ismodule(obj)
             or isinstance(obj, ReferrerName)
         )
