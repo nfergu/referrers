@@ -42,7 +42,7 @@ _TYPE_GLOBAL = "global"
 _TYPE_OBJECT = "object"
 _TYPE_MODULE_VARIABLE = "module variable"
 
-_MAX_MAPPING_KEY_LENGTH = 50
+_MAX_MAPPING_KEY_LENGTH = 150
 
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1051,6 +1051,8 @@ class _ReferrerGraphBuilder:
         # (temporarily) hold a reference to objects.
         return (
             inspect.isframe(obj)
+            # Note: this may be excluding things that we don't want to exclude, so this
+            # should probably be revisited.
             or inspect.isbuiltin(obj)
             or inspect.isfunction(obj)
             or inspect.ismethoddescriptor(obj)
