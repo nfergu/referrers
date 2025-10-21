@@ -94,11 +94,11 @@ is in turn referenced by a local variable in the `my_func` function.
 
 ## Integration with memory analysis tools
 
-This library can be used with other memory analysis tools to help identify the source
-of memory leaks.
+It is recommended to use the [Memalot](https://pypi.org/project/memalot/) package to find
+memory leaks. This is by the same author, and uses Referrers to show references to leaking objects.
 
-For example, to print the referrers of the top 10 largest objects using 
-[Pympler](https://pympler.readthedocs.io/en/latest/):
+This library can also be used with other memory analysis tools. For example, to print the referrers
+of the top 10 largest objects using [Pympler](https://pympler.readthedocs.io/en/latest/):
 
 ```python
 from pympler import muppy
@@ -122,41 +122,6 @@ if __name__ == "__main__":
 
 Note that this example  `exclude_object_ids` to exclude the `top_10_objects`
 variable from the graph.
-
-Here's how to find the referrers of all objects that have been created
-between two points in time:
-
-```python
-import referrers
-from pympler import summary, muppy
-
-def main():
-    o1 = muppy.get_objects()
-    my_dict = {'a': [1]}
-    o2 = muppy.get_objects()
-    
-    o1_ids = {id(obj) for obj in o1}
-    o2_ids = {id(obj): obj for obj in o2}
-    diff = [obj for obj_id, obj in o2_ids.items() if obj_id not in o1_ids]
-    
-    summary.print_(summary.get_diff(summary.summarize(o1), summary.summarize(o2)))
-    
-    for obj in diff:
-        print(
-            referrers.get_referrer_graph(
-                obj,
-                exclude_object_ids=[id(o1), id(o2), id(diff), id(o2_ids)],
-            )
-        )
-
-if __name__ == '__main__':
-    main()
-
-```
-
-This will print a summary of the objects that have been created between o1 and o2,
-as well as the variable names that reference these objects. This can be useful for finding
-memory leaks.
 
 ## Performance
 
